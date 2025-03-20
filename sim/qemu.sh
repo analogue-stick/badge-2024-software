@@ -2,15 +2,12 @@
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-source /opt/esp-idf/export.sh
-PATH=~/qemu/bin:$PATH
-
-    #-drive file=/home/molive/Projects/lcd_qemu_rgb_panel/build/qemu_efuse.bin,if=none,format=raw,id=efuse \
     #-display sdl \
-    #-global driver=nvram.esp32c3.efuse,property=drive,value=efuse \
     #-serial tcp::5555,server \
-qemu-system-xtensa -M esp32s3 \
+~/qemu/bin/qemu-system-xtensa -M esp32s3 \
     -drive file="$SCRIPT_DIR"/merged-firmware.bin,if=mtd,format=raw \
+    -drive file="$SCRIPT_DIR"/qemu_efuse.bin,if=none,format=raw,id=efuse \
+    -global driver=nvram.esp32c3.efuse,property=drive,value=efuse \
     -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
     -nic user,model=open_eth \
     -m 2M \
