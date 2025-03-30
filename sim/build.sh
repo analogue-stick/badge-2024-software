@@ -10,7 +10,7 @@ make -C mpy-cross
 cd ports/esp32/boards
 ln -sfn ../../../../tildagon ./tildagon
 
-PATH=/qemu/bin:$PATH
+export PATH=/qemu/bin:$PATH
 
 cd ..
 make submodules BOARD=tildagon USER_C_MODULES=/firmware/drivers/micropython.cmake
