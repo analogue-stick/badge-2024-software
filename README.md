@@ -1,6 +1,9 @@
 [![Build Micropython](https://github.com/emfcamp/badge-2024-software/actions/workflows/build.yml/badge.svg)](https://github.com/emfcamp/badge-2024-software/actions/workflows/build.yml)
 
-# Tildagon Firmware
+# QEMU Sim Tildagon Firmware
+
+This version of the tildagon firmware repo tries to use QEMU as the backend for the simulator. Unfortunately, this does not currently work.
+As of writing micropython hangs upon trying to calibrate the ADCs, before hitting app_main. See the sim directory for more details.
 
 Web flasher is available @ https://emfcamp.github.io/badge-2024-software/
 

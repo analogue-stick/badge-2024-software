@@ -1,0 +1,63 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "command": "docker run -it --rm --device /dev/ttyACM1:/dev/ttyUSB0 --env \"TARGET=esp32s3\" -v \"$(pwd)\"/:/firmware -u $UID -e HOME=/tmp matthewwilkes/esp_idf:5.4 deploy",
+            "group": {
+                "kind": "build"
+            },
+            "problemMatcher": [],
+            "label": "deploy",
+        },
+        {
+            "type": "shell",
+            "command": "docker run -it --rm --env \"TARGET=esp32s3\" -v \"$(pwd)\"/:/firmware -u $UID -e HOME=/tmp matthewwilkes/esp_idf:5.4",
+            "group": {
+                "isDefault": true,
+                "kind": "build"
+            },
+            "problemMatcher": [],
+            "label": "build",
+        },
+        {
+            "type": "shell",
+            "command": "docker run -it --rm --env \"TARGET=esp32s3\" -v \"$(pwd)\"/:/firmware -u $UID -e HOME=/tmp matthewwilkes/esp_idf:5.4 clean",
+            "group": {
+                "kind": "build"
+            },
+            "problemMatcher": [],
+            "label": "clean",
+        },
+        {
+            "type": "shell",
+            "command": "docker run -it --rm --device /dev/ttyACM1:/dev/ttyUSB0 --env \"TARGET=esp32s3\" -v \"$(pwd)\"/:/firmware -u $UID -e HOME=/tmp matthewwilkes/esp_idf:5.4 monitor",
+            "problemMatcher": [],
+            "label": "monitor",
+        },
+        {
+            "type": "shell",
+            "command": "docker run -it --rm --device /dev/ttyACM1:/dev/ttyUSB0 --env \"TARGET=esp32s3\" -v \"$(pwd)\"/:/firmware -u $UID -e HOME=/tmp matthewwilkes/esp_idf:5.4 size",
+            "problemMatcher": [],
+            "label": "size",
+        },
+        {
+            "type": "shell",
+            "command": "docker run -it --rm --device /dev/ttyACM1:/dev/ttyUSB0 --env \"TARGET=esp32s3\" -v \"$(pwd)\"/:/firmware -u $UID -e HOME=/tmp matthewwilkes/esp_idf:5.4 size-components",
+            "problemMatcher": [],
+            "label": "size-components",
+        },
+        {
+            "type": "shell",
+            "command": "docker run -it --rm --device /dev/ttyACM1:/dev/ttyUSB0 --env \"TARGET=esp32s3\" -v \"$(pwd)\"/:/firmware -u $UID -e HOME=/tmp matthewwilkes/esp_idf:5.4 size-files",
+            "problemMatcher": [],
+            "label": "size-files",
+        },
+        {
+            "type": "shell",
+            "command": "docker run -it --rm --env \"TARGET=esp32s3\" -v \"$(pwd)\"/:/firmware -u $UID -p 3333:3333 -e HOME=/tmp molive0/esp_idf:v5.4 qemu",
+            "problemMatcher": [],
+            "label": "qemu",
+        }
+    ]
+}

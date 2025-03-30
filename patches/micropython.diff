@@ -7,7 +7,7 @@ index 7f31ea691..0a5867cc1 100644
  	$(call RUN_IDF_PY,size-files)
  
 +qemu:
-+	$(call RUN_IDF_PY,qemu)
++	$(call RUN_IDF_PY,qemu --gdb --qemu-extra-args "-m 2M")
 +
  # Run idf.py with the UPDATE_SUBMODULES flag to update
  # necessary submodules for this board.
