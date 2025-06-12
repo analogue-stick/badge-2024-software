@@ -1,4 +1,5 @@
 import ctx
+import sasppu
 import math
 import os
 import time
@@ -138,12 +139,12 @@ class ButtonsInput(Input):
 
     # Default keyboard mapping
     button_map = {
-        "left_jog_left": pygame.K_a,
-        "left_press": pygame.K_b,
-        "left_jog_right": pygame.K_c,
-        "right_jog_left": pygame.K_d,
-        "right_press": pygame.K_e,
-        "right_jog_right": pygame.K_f,
+        "left_jog_left": pygame.K_UP,
+        "left_press": pygame.K_RIGHT,
+        "left_jog_right": pygame.K_e,
+        "right_jog_left": pygame.K_DOWN,
+        "right_press": pygame.K_LEFT,
+        "right_jog_right": pygame.K_q,
     }
 
     # Load custom keymapping if available
@@ -544,6 +545,25 @@ def display_update(subctx):
             sys.exit(0)
 
     fbm.put(fbp, c)
+
+def display_update_sasppu():
+    _sim.process_events()
+
+    wasmfb = sasppu._wasm._i.exports.render()
+    fb = sasppu._wasm._i.exports.memory.uint8_view(wasmfb)
+
+    _sim.render_display(fb)
+    _sim.render_gui_now()
+
+    global SCREENSHOT
+    global SCREENSHOT_DELAY
+    if SCREENSHOT:
+        SCREENSHOT_DELAY -= 1
+        if SCREENSHOT_DELAY <= 0:
+            path = os.curdir + "/flow3r.png"
+            pygame.image.save(screen, path)
+            print("Saved screenshot to ", path)
+            sys.exit(0)
 
 
 def get_button_state(left):

@@ -25,7 +25,7 @@ class Wasm:
         wasmpath = os.path.join(simpath, "wasm", "ctx.wasm")
         module = wasmer.Module(store, open(wasmpath, "rb").read())
         wasi_version = wasmer.wasi.get_version(module, strict=False)
-        wasi_env = wasmer.wasi.StateBuilder("badge23sim").finalize()
+        wasi_env = wasmer.wasi.StateBuilder("tildagonsim").finalize()
         import_object = wasi_env.generate_import_object(store, wasi_version)
         instance = wasmer.Instance(module, import_object)
         self._i = instance
@@ -464,16 +464,6 @@ class Context:
             "Material Icons",
             "Comic Mono",
         ][i]
-
-    def scope(self):
-        x = -120
-        self.move_to(x, 0)
-        for i in range(240):
-            x2 = x + i
-            y2 = math.sin(i / 10) * 60
-            self.line_to(x2, y2)
-        self.stroke()
-        return self
 
 
 RGBA8 = 4

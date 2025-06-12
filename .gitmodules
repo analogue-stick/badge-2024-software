@@ -7,3 +7,6 @@
 [submodule "drivers/sasppu"]
 	path = drivers/sasppu
 	url = https://github.com/analogue-stick/sasppu-mpy.git
+[submodule "sim/apps/sasppu-test-cart"]
+	path = sim/apps/sasppu-test-cart
+	url = https://github.com/analogue-stick/sasppu-test-cart.git
