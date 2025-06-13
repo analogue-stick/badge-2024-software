@@ -67,6 +67,28 @@ GREEN = _wasm._i.exports.macro_GREEN()
 BLUE = _wasm._i.exports.macro_BLUE()
 WHITE = _wasm._i.exports.macro_WHITE()
 
+HDMA_NOOP = 0
+HDMA_DISABLE = 1
+HDMA_MAIN_STATE_MAINSCREEN_COLOUR = 2
+HDMA_MAIN_STATE_SUBSCREEN_COLOUR = 3
+HDMA_MAIN_STATE_WINDOW1_LEFT = 4
+HDMA_MAIN_STATE_WINDOW1_RIGHT = 5
+HDMA_MAIN_STATE_WINDOW2_LEFT = 6
+HDMA_MAIN_STATE_WINDOW2_RIGHT = 7
+HDMA_MAIN_STATE_BGCOL_WINDOWS = 8
+HDMA_MAIN_STATE_FLAGS = 9
+HDMA_CMATH_STATE_SCREEN_FADE = 10
+HDMA_CMATH_STATE_FLAGS = 11
+HDMA_BACKGROUND0_X = 12
+HDMA_BACKGROUND0_Y = 13
+HDMA_BACKGROUND0_WINDOWS = 14
+HDMA_BACKGROUND0_FLAGS = 15
+HDMA_BACKGROUND1_X = 16
+HDMA_BACKGROUND1_Y = 17
+HDMA_BACKGROUND1_WINDOWS = 18
+HDMA_BACKGROUND1_FLAGS = 19
+HDMA_HDMA_ENABLE = 20
+
 def type_bound_i16(v, name: str):
     if (not isinstance(v, int)):
         raise TypeError("{name} must be integer".format(name=name))
@@ -466,8 +488,6 @@ class MainState(HasFlags, HasBindPoint):
             return
         main = _wasm._i.exports.get_main_state()
         unpacked = unpack_from('HHhhhhBB', _wasm._i.exports.memory.buffer, main)
-        print("MS UNPACKED:")
-        print(unpacked)
         self._mainscreen_colour = unpacked[0]
         self._subscreen_colour = unpacked[1]
         self._window_1_left = unpacked[2]
@@ -490,14 +510,11 @@ class MainState(HasFlags, HasBindPoint):
                       self._bgcol_windows,
                       self._flags
                       )
-        print("MS PACKED:")
-        print(packed)
         p = _wasm.malloc(len(packed))
         mem = _wasm._i.exports.memory.uint8_view(p)
         mem[0 : len(packed)] = packed
         _wasm._i.exports.set_main_state(p)
         _wasm.free(p)
-        self._load()
 
     def __eq__(self, other):
         if (not isinstance(other, MainState)):
@@ -661,15 +678,25 @@ class HDMA:
             raise TypeError("HDMA index must be integer")
         if (key < 0 or key >= len(self)):
             raise ValueError("HDMA index out of bounds ({val})".format(val=key))
-        #todo
-        return 0
+        entry = _wasm._i.exports.get_table_entry(self._table, key)
+        unpacked = unpack_from('IH', _wasm._i.exports.memory.buffer, entry)
+        return unpacked
     
     def __setitem__(self, key, entry):
         if (not isinstance(key, int)):
             raise TypeError("HDMA index must be integer")
         if (key < 0 or key >= len(self)):
             raise ValueError("HDMA index out of bounds ({val})".format(val=key))
-        #todo
+        if ((not isinstance(entry, tuple)) or (len(entry) != 2) or (not isinstance(entry[0], int)) or (not isinstance(entry[1], int))):
+            raise TypeError("HDMA value must be tuple of two integers")
+        if (entry[0] < 0 or entry[0] > 0xFFFF):
+            raise ValueError("HDMA value out of bounds ({val})".format(val=key))
+        packed = pack('IH', entry[0], entry[1])
+        p = _wasm.malloc(len(packed))
+        mem = _wasm._i.exports.memory.uint8_view(p)
+        mem[0 : len(packed)] = packed
+        _wasm._i.exports.set_table_entry(self._table, key, p)
+        _wasm.free(p)
 
     def __len__(self):
         return (240)
@@ -750,13 +777,24 @@ def fill_background(x: int, y: int, width: int, height: int, colour: int):
     return res
 
 def draw_text_background(x: int, y: int, colour: int, line_width: int, text: str, double_size: bool = False, newline_height: int = 10):
-    data = bytes(text, encoding="ASCII")
+    data = bytes(text + "\x00", encoding="ASCII")
     p = _wasm.malloc(len(data))
     mem = _wasm._i.exports.memory.uint8_view(p)
     mem[0 : len(data)] = data
     res = _wasm._i.exports.SASPPU_draw_text_background(x, y, colour, line_width, newline_height, double_size, p)
     _wasm.free(p)
     return res
+
+def get_text_size(line_width: int, text: str, double_size: bool = False, newline_height: int = 10):
+    data = bytes(text + "\x00", encoding="ASCII")
+    p = _wasm.malloc(len(data) + 8)
+    mem = _wasm._i.exports.memory.uint8_view(p)
+    mem[0 : len(data)] = data
+    mem[len(data): len(data) + 8] = [0,0,0,0,0,0,0,0]
+    _wasm._i.exports.SASPPU_get_text_size(p + len(data), p + len(data) + 4, line_width, newline_height, double_size, p)
+    (x, y) = unpack_from("II", _wasm._i.exports.memory.buffer, p + len(data))
+    _wasm.free(p)
+    return (x, y)
 
 def gfx_reset():
     _wasm._i.exports.SASPPU_gfx_reset()

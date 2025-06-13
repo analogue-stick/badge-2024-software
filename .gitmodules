@@ -10,3 +10,9 @@
 [submodule "sim/apps/sasppu-test-cart"]
 	path = sim/apps/sasppu-test-cart
 	url = https://github.com/analogue-stick/sasppu-test-cart.git
+[submodule "sim/apps/badgemon"]
+	path = sim/apps/badgemon
+	url = https://github.com/analogue-stick/badgemon.git
+[submodule "sim/apps/badgemon-source"]
+	path = sim/apps/badgemon-source
+	url = https://github.com/analogue-stick/badgemon-source.git

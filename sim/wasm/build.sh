@@ -70,6 +70,7 @@ _SASPPU_compressed_background_transparent,\
 _SASPPU_fill_background,\
 _SASPPU_draw_text_background,\
 _SASPPU_draw_text_next_background,\
+_SASPPU_get_text_size,\
 _get_framebuffer,\
 _get_main_state,\
 _get_cmath_state,\
