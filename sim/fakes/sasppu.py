@@ -8,6 +8,8 @@ import sys
 import wasmer
 import wasmer_compiler_cranelift
 
+from struct import pack, unpack_from
+
 class Wasm:
     """
     Wasm wraps access to WebAssembly functions, converting to/from Python types
@@ -24,117 +26,13 @@ class Wasm:
         import_object = wasi_env.generate_import_object(store, wasmer.wasi.Version.LATEST)
         instance = wasmer.Instance(module, import_object)
         self._i = instance
+        self._i.exports.SASPPU_gfx_reset()
 
     def malloc(self, n):
         return self._i.exports.malloc(n)
 
     def free(self, p):
         self._i.exports.free(p)
-
-    def ctx_parse(self, ctx, s):
-        s = s.encode("utf-8")
-        slen = len(s) + 1
-        p = self.malloc(slen)
-        mem = self._i.exports.memory.uint8_view(p)
-        mem[0 : slen - 1] = s
-        mem[slen - 1] = 0
-        self._i.exports.ctx_parse(ctx, p)
-        self.free(p)
-
-    def ctx_new_for_framebuffer(self, width, height, stride, format):
-        """
-        Call ctx_new_for_framebuffer, but also first allocate the underlying
-        framebuffer and return it alongside the Ctx*.
-        """
-        fb = self.malloc(stride * height)
-        return fb, self._i.exports.ctx_new_for_framebuffer(
-            fb, width, height, stride, format
-        )
-
-    def ctx_new_drawlist(self, width, height):
-        return self._i.exports.ctx_new_drawlist(width, height)
-
-    def ctx_apply_transform(self, ctx, *args):
-        args = [float(a) for a in args]
-        return self._i.exports.ctx_apply_transform(ctx, *args)
-
-    def ctx_define_texture(self, ctx, eid, *args):
-        s = eid.encode("utf-8")
-        slen = len(s) + 1
-        p = self.malloc(slen)
-        mem = self._i.exports.memory.uint8_view(p)
-        mem[0 : slen - 1] = s
-        mem[slen - 1] = 0
-        res = self._i.exports.ctx_define_texture(ctx, p, *args)
-        self.free(p)
-        return res
-
-    def ctx_draw_texture(self, ctx, eid, *args):
-        s = eid.encode("utf-8")
-        slen = len(s) + 1
-        p = self.malloc(slen)
-        mem = self._i.exports.memory.uint8_view(p)
-        mem[0 : slen - 1] = s
-        mem[slen - 1] = 0
-        args = [float(a) for a in args]
-        res = self._i.exports.ctx_draw_texture(ctx, p, *args)
-        self.free(p)
-        return res
-
-    def ctx_text_width(self, ctx, text):
-        s = text.encode("utf-8")
-        slen = len(s) + 1
-        p = self.malloc(slen)
-        mem = self._i.exports.memory.uint8_view(p)
-        mem[0 : slen - 1] = s
-        mem[slen - 1] = 0
-        res = self._i.exports.ctx_text_width(ctx, p)
-        self.free(p)
-        return res
-
-    def ctx_x(self, ctx):
-        return self._i.exports.ctx_x(ctx)
-
-    def ctx_y(self, ctx):
-        return self._i.exports.ctx_y(ctx)
-
-    def ctx_logo(self, ctx, *args):
-        args = [float(a) for a in args]
-        return self._i.exports.ctx_logo(ctx, *args)
-
-    def ctx_destroy(self, ctx):
-        return self._i.exports.ctx_destroy(ctx)
-
-    def ctx_render_ctx(self, ctx, dctx):
-        return self._i.exports.ctx_render_ctx(ctx, dctx)
-
-    def stbi_load_from_memory(self, buf):
-        p = self.malloc(len(buf))
-        mem = self._i.exports.memory.uint8_view(p)
-        mem[0 : len(buf)] = buf
-        wh = self.malloc(4 * 3)
-        res = self._i.exports.stbi_load_from_memory(p, len(buf), wh, wh + 4, wh + 8, 4)
-        whmem = self._i.exports.memory.uint32_view(wh // 4)
-        r = (res, whmem[0], whmem[1], whmem[2])
-        self.free(p)
-        self.free(wh)
-
-        res, w, h, c = r
-        b = self._i.exports.memory.uint8_view(res)
-        if c == 3:
-            return r
-        for j in range(h):
-            for i in range(w):
-                b[i * 4 + j * w * 4 + 0] = int(
-                    b[i * 4 + j * w * 4 + 0] * b[i * 4 + j * w * 4 + 3] / 255
-                )
-                b[i * 4 + j * w * 4 + 1] = int(
-                    b[i * 4 + j * w * 4 + 1] * b[i * 4 + j * w * 4 + 3] / 255
-                )
-                b[i * 4 + j * w * 4 + 2] = int(
-                    b[i * 4 + j * w * 4 + 2] * b[i * 4 + j * w * 4 + 3] / 255
-                )
-        return r
 
 _wasm = Wasm()
 
@@ -162,13 +60,12 @@ BPP2 = 1
 BPP4 = 2
 BPP8 = 3
 
-#todo
-TRANSPARENT_BLACK = 0
-OPAQUE_BLACK = 0
-RED = 0
-GREEN = 0
-BLUE = 0
-WHITE = 0
+TRANSPARENT_BLACK = _wasm._i.exports.macro_TRANSPARENT_BLACK()
+OPAQUE_BLACK = _wasm._i.exports.macro_OPAQUE_BLACK()
+RED = _wasm._i.exports.macro_RED()
+GREEN = _wasm._i.exports.macro_GREEN()
+BLUE = _wasm._i.exports.macro_BLUE()
+WHITE = _wasm._i.exports.macro_WHITE()
 
 def type_bound_i16(v, name: str):
     if (not isinstance(v, int)):
@@ -356,10 +253,30 @@ class Background(HasFlags, HasWindows, HasPosition, HasBindPoint):
         super(Background, self).__init__()
 
     def _load(self):
-        pass
+        if (self._bound == 0):
+            bg = _wasm._i.exports.get_background_0()
+        elif (self._bound == 1):
+            bg = _wasm._i.exports.get_background_1()
+        else:
+            return
+        unpacked = unpack_from('hhBB', _wasm._i.exports.memory.buffer, bg)
+        self._x = unpacked[0]
+        self._y = unpacked[1]
+        self._windows = unpacked[2]
+        self._flags = unpacked[3]
 
     def _save(self):
-        pass
+        if (self._bound < 0):
+            return
+        packed = pack('hhBB', self._x, self._y, self._windows, self._flags)
+        p = _wasm.malloc(len(packed))
+        mem = _wasm._i.exports.memory.uint8_view(p)
+        mem[0 : len(packed)] = packed
+        if (self._bound == 0):
+            _wasm._i.exports.set_background_0(p)
+        elif (self._bound == 1):
+            _wasm._i.exports.set_background_1(p)
+        _wasm.free(p)
 
     def __eq__(self, other):
         if (not isinstance(other, Background)):
@@ -396,10 +313,22 @@ class CMathState(HasFlags, HasBindPoint):
         self._save()
 
     def _load(self):
-        pass
+        if (self._bound < 0):
+            return
+        cmath = _wasm._i.exports.get_cmath_state()
+        unpacked = unpack_from('HB', _wasm._i.exports.memory.buffer, cmath)
+        self._screen_fade = unpacked[0]
+        self._flags = unpacked[1]
 
     def _save(self):
-        pass
+        if (self._bound < 0):
+            return
+        packed = pack('HB', self._screen_fade, self._flags)
+        p = _wasm.malloc(len(packed))
+        mem = _wasm._i.exports.memory.uint8_view(p)
+        mem[0 : len(packed)] = packed
+        _wasm._i.exports.set_cmath_state(p)
+        _wasm.free(p)
 
     def __eq__(self, other):
         if (not isinstance(other, CMathState)):
@@ -533,10 +462,42 @@ class MainState(HasFlags, HasBindPoint):
         self._save()
 
     def _load(self):
-        pass
+        if (self._bound < 0):
+            return
+        main = _wasm._i.exports.get_main_state()
+        unpacked = unpack_from('HHhhhhBB', _wasm._i.exports.memory.buffer, main)
+        print("MS UNPACKED:")
+        print(unpacked)
+        self._mainscreen_colour = unpacked[0]
+        self._subscreen_colour = unpacked[1]
+        self._window_1_left = unpacked[2]
+        self._window_1_right = unpacked[3]
+        self._window_2_left = unpacked[4]
+        self._window_2_right = unpacked[5]
+        self._bgcol_windows = unpacked[6]
+        self._flags = unpacked[7]
 
     def _save(self):
-        pass
+        if (self._bound < 0):
+            return
+        packed = pack('HHhhhhBB',
+                      self._mainscreen_colour,
+                      self._subscreen_colour,
+                      self._window_1_left,
+                      self._window_1_right, 
+                      self._window_2_left,
+                      self._window_2_right, 
+                      self._bgcol_windows,
+                      self._flags
+                      )
+        print("MS PACKED:")
+        print(packed)
+        p = _wasm.malloc(len(packed))
+        mem = _wasm._i.exports.memory.uint8_view(p)
+        mem[0 : len(packed)] = packed
+        _wasm._i.exports.set_main_state(p)
+        _wasm.free(p)
+        self._load()
 
     def __eq__(self, other):
         if (not isinstance(other, MainState)):
@@ -623,10 +584,36 @@ class Sprite(HasFlags, HasWindows, HasPosition, HasBindPoint):
         self._save()
 
     def _load(self):
-        pass
+        if (self._bound < 0):
+            return
+        spr = _wasm._i.exports.get_sprite(self._bound)
+        unpacked = unpack_from('hhBBBBBB', _wasm._i.exports.memory.buffer, spr)
+        self._x = unpacked[0]
+        self._y = unpacked[1]
+        self._width = unpacked[2]
+        self._height = unpacked[3]
+        self._graphics_x = unpacked[4]
+        self._graphics_y = unpacked[5]
+        self._windows = unpacked[6]
+        self._flags = unpacked[7]
 
     def _save(self):
-        pass
+        if (self._bound < 0):
+            return
+        packed = pack('hhBBBBBB',
+                      self._x,
+                      self._y,
+                      self._width,
+                      self._height, 
+                      self._graphics_x,
+                      self._graphics_y, 
+                      self._windows,
+                      self._flags)
+        p = _wasm.malloc(len(packed))
+        mem = _wasm._i.exports.memory.uint8_view(p)
+        mem[0 : len(packed)] = packed
+        _wasm._i.exports.set_sprite(self._bound, p)
+        _wasm.free(p)
 
     def __eq__(self, other):
         if (not isinstance(other, Sprite)):
@@ -641,18 +628,6 @@ class Sprite(HasFlags, HasWindows, HasPosition, HasBindPoint):
         return equal
     
 class OAM:
-    #def __init__(self):
-    #    self._i = 0
-
-    #def __iter__(self):
-    #    return self
-
-    #def __next__(self): 
-    #    self._i += 1
-    #    if self._i < SPRITE_COUNT:
-    #        return self[self._i]
-    #    raise StopIteration
-    
     def __getitem__(self, key):
         if (not isinstance(key, int)):
             raise TypeError("OAM index must be integer")
@@ -708,8 +683,10 @@ class MAP:
             raise TypeError("Map index must be integer")
         if (key < 0 or key >= len(self)):
             raise ValueError("Map index out of bounds ({val})".format(val=key))
-        #todo
-        return 0
+        if (self._bg == 0):
+            return _wasm._i.exports.get_bg0_map(key)
+        else:
+            return _wasm._i.exports.get_bg1_map(key)
     
     def __setitem__(self, key, tile):
         if (not isinstance(key, int)):
@@ -717,10 +694,72 @@ class MAP:
         if (key < 0 or key >= len(self)):
             raise ValueError("Map index out of bounds ({val})".format(val=key))
         type_bound_u16(tile, "Map tile")
-        #todo
+        if (self._bg == 0):
+            _wasm._i.exports.set_bg0_map(key, tile)
+        else:
+            _wasm._i.exports.set_bg1_map(key, tile)
 
     def __len__(self):
         return (MAP_HEIGHT * MAP_WIDTH)
+    
+def cmath(col):
+    return _wasm._i.exports.macro_CMATH(col)
+def rgb555(r, g, b):
+    return _wasm._i.exports.macro_RGB555(r, g, b)
+def rgb555_cmath(r, g, b):
+    return _wasm._i.exports.macro_RGB555_CMATH(r, g, b)
+def rgb888(r, g, b):
+    return _wasm._i.exports.macro_RGB888(r, g, b)
+def rgb888_cmath(r, g, b):
+    return _wasm._i.exports.macro_RGB888_CMATH(r, g, b)
+def grey555(g):
+    return _wasm._i.exports.macro_GREY555(g)
+def grey555_cmath(g):
+    return _wasm._i.exports.macro_GREY555_CMATH(g)
+def grey888(g):
+    return _wasm._i.exports.macro_GREY888(g)
+def grey888_cmath(g):
+    return _wasm._i.exports.macro_GREY888_CMATH()
+def mul_channel(col, mul):
+    return _wasm._i.exports.macro_MUL_CHANNEL(col, mul)
+def mul_rgb555(r, g, b, mul):
+    return _wasm._i.exports.macro_MUL_RGB555(r, g, b, mul)
+def r_channel(col):
+    return _wasm._i.exports.macro_R_CHANNEL(col)
+def g_channel(col):
+    return _wasm._i.exports.macro_G_CHANNEL(col)
+def b_channel(col):
+    return _wasm._i.exports.macro_B_CHANNEL(col)
+def cmath_channel(col):
+    return _wasm._i.exports.macro_CMATH_CHANNEL(col)
+def mul_col(col, mul):
+    return _wasm._i.exports.macro_MUL_COL(col, mul)
+    
+def blit_sprite(x: int, y: int, width: int, height: int, data: bytes, double_size: bool = False):
+    if (len(data) < (width * height * 2)):
+        raise ValueError("Data not large enough for size")
+    p = _wasm.malloc(len(data))
+    mem = _wasm._i.exports.memory.uint8_view(p)
+    mem[0 : len(data)] = data
+    res = _wasm._i.exports.SASPPU_blit_sprite(x, y, width, height, double_size, p)
+    _wasm.free(p)
+    return res
+
+def fill_background(x: int, y: int, width: int, height: int, colour: int):
+    res = _wasm._i.exports.SASPPU_fill_background(x, y, width, height, colour)
+    return res
+
+def draw_text_background(x: int, y: int, colour: int, line_width: int, text: str, double_size: bool = False, newline_height: int = 10):
+    data = bytes(text, encoding="ASCII")
+    p = _wasm.malloc(len(data))
+    mem = _wasm._i.exports.memory.uint8_view(p)
+    mem[0 : len(data)] = data
+    res = _wasm._i.exports.SASPPU_draw_text_background(x, y, colour, line_width, newline_height, double_size, p)
+    _wasm.free(p)
+    return res
+
+def gfx_reset():
+    _wasm._i.exports.SASPPU_gfx_reset()
 
 oam = OAM()
 bg0 = MAP(0)
@@ -734,15 +773,13 @@ hdma_5 = HDMA(5)
 hdma_6 = HDMA(6)
 hdma_7 = HDMA(7)
 
-_hdma_enable = 0x00
-
 def __getattr__(name):
     if name == 'hdma_enable':
-        return _hdma_enable
+        return _wasm._i.exports.get_hdma_enable()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 def __setattr__(name, value):
     if name == 'hdma_enable':
-        type_bound_u16(value, "HDMA enable")
-        _hdma_enable = value
+        type_bound_u8(value, "HDMA enable")
+        _wasm._i.exports.set_hdma_enable(value)
         return
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
