@@ -182,6 +182,9 @@ class _Scheduler:
         async def mark_update_finished():
             # Unblock renderer
             self.render_needed.set()
+            # For backwards compatability
+            if (not hasattr(app, "request_fast_updates")):
+                app.request_fast_updates = False
             if app.request_fast_updates:
                 await asyncio.sleep(0.00)
             else:
