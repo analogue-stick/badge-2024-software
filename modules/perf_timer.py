@@ -1,6 +1,6 @@
 import time
 
-DEBUG_PERF = True
+DEBUG_PERF = False
 
 
 def perf_timer(func):
