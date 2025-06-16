@@ -15,6 +15,7 @@ from system.notification.events import ShowNotificationEvent
 
 from app import SASPPUApp
 
+
 class _Scheduler:
     # Always receive all events
     _focused = True
@@ -60,11 +61,7 @@ class _Scheduler:
     async def _handle_start_app(self, event: RequestStartAppEvent):
         if isinstance(event.app, SASPPUApp):
             if self.sasppu_lock:
-                eventbus.emit(
-                    ShowNotificationEvent(
-                        message=f"SASPPU is locked"
-                    )
-                )
+                eventbus.emit(ShowNotificationEvent(message="SASPPU is locked"))
                 return
             if event.app.lock_context:
                 self.sasppu_lock = True
@@ -183,7 +180,7 @@ class _Scheduler:
             # Unblock renderer
             self.render_needed.set()
             # For backwards compatability
-            if (not hasattr(app, "request_fast_updates")):
+            if not hasattr(app, "request_fast_updates"):
                 app.request_fast_updates = False
             if app.request_fast_updates:
                 await asyncio.sleep(0.00)
@@ -236,7 +233,9 @@ class _Scheduler:
             self.render_needed.clear()
 
             with PerfTimer("render"):
-                if len(self.foreground_stack) > 0 and isinstance(self.foreground_stack[-1], SASPPUApp):
+                if len(self.foreground_stack) > 0 and isinstance(
+                    self.foreground_stack[-1], SASPPUApp
+                ):
                     app = self.foreground_stack[-1]
                     with PerfTimer(f"rendering {app}"):
                         try:
@@ -258,6 +257,8 @@ class _Scheduler:
                         await asyncio.sleep(0)
                     ctx = display.start_frame()
                     for app in self.foreground_stack[-1:] + self.on_top_stack:
+                        if isinstance(app, SASPPUApp):
+                            continue
                         with PerfTimer(f"rendering {app}"):
                             ctx.save()
                             try:
