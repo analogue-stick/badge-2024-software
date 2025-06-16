@@ -811,13 +811,8 @@ hdma_5 = HDMA(5)
 hdma_6 = HDMA(6)
 hdma_7 = HDMA(7)
 
-def __getattr__(name):
-    if name == 'hdma_enable':
-        return _wasm._i.exports.get_hdma_enable()
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-def __setattr__(name, value):
-    if name == 'hdma_enable':
-        type_bound_u8(value, "HDMA enable")
-        _wasm._i.exports.set_hdma_enable(value)
-        return
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+def get_hdma_enable():
+    return _wasm._i.exports.get_hdma_enable()
+def set_hdma_enable(value):
+    type_bound_u8(value, "HDMA enable")
+    _wasm._i.exports.set_hdma_enable(value)
