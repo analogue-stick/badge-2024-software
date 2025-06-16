@@ -9,6 +9,7 @@ import wasmer
 import wasmer_compiler_cranelift
 
 from struct import pack, unpack_from
+from types import ModuleType
 
 class Wasm:
     """
@@ -35,59 +36,6 @@ class Wasm:
         self._i.exports.free(p)
 
 _wasm = Wasm()
-
-SPRITE_COUNT = 256
-SPRITE_CACHE = 16
-
-MAP_WIDTH_POWER = 6
-MAP_HEIGHT_POWER = 6
-MAP_WIDTH = (1 << MAP_WIDTH_POWER)
-MAP_HEIGHT = (1 << MAP_HEIGHT_POWER)
-
-IC_SUCCESS = 0
-IC_TOO_WIDE = 1
-IC_TOO_TALL = 2
-IC_INVALID_BIT_DEPTH = 3
-
-WINDOW_A = (0b0001)
-WINDOW_B = (0b0010)
-WINDOW_AB = (0b0100)
-WINDOW_X = (0b1000)
-WINDOW_ALL = (0b1111)
-
-BPP1 = 0
-BPP2 = 1
-BPP4 = 2
-BPP8 = 3
-
-TRANSPARENT_BLACK = _wasm._i.exports.macro_TRANSPARENT_BLACK()
-OPAQUE_BLACK = _wasm._i.exports.macro_OPAQUE_BLACK()
-RED = _wasm._i.exports.macro_RED()
-GREEN = _wasm._i.exports.macro_GREEN()
-BLUE = _wasm._i.exports.macro_BLUE()
-WHITE = _wasm._i.exports.macro_WHITE()
-
-HDMA_NOOP = 0
-HDMA_DISABLE = 1
-HDMA_MAIN_STATE_MAINSCREEN_COLOUR = 2
-HDMA_MAIN_STATE_SUBSCREEN_COLOUR = 3
-HDMA_MAIN_STATE_WINDOW1_LEFT = 4
-HDMA_MAIN_STATE_WINDOW1_RIGHT = 5
-HDMA_MAIN_STATE_WINDOW2_LEFT = 6
-HDMA_MAIN_STATE_WINDOW2_RIGHT = 7
-HDMA_MAIN_STATE_BGCOL_WINDOWS = 8
-HDMA_MAIN_STATE_FLAGS = 9
-HDMA_CMATH_STATE_SCREEN_FADE = 10
-HDMA_CMATH_STATE_FLAGS = 11
-HDMA_BACKGROUND0_X = 12
-HDMA_BACKGROUND0_Y = 13
-HDMA_BACKGROUND0_WINDOWS = 14
-HDMA_BACKGROUND0_FLAGS = 15
-HDMA_BACKGROUND1_X = 16
-HDMA_BACKGROUND1_Y = 17
-HDMA_BACKGROUND1_WINDOWS = 18
-HDMA_BACKGROUND1_FLAGS = 19
-HDMA_HDMA_ENABLE = 20
 
 def type_bound_i16(v, name: str):
     if (not isinstance(v, int)):
@@ -124,7 +72,14 @@ def type_bound_u4(v, name: str):
         raise TypeError("{name} must be integer".format(name=name))
     if (v < 0 or v > 0xF):
         raise ValueError("{name} value out of bounds ({val})".format(name=name, val=v))
-    
+
+SPRITE_COUNT = 256
+
+MAP_WIDTH_POWER = 6
+MAP_HEIGHT_POWER = 6
+MAP_WIDTH = (1 << MAP_WIDTH_POWER)
+MAP_HEIGHT = (1 << MAP_HEIGHT_POWER)
+
 class HasBindPoint:
     def _load(self):
         pass
@@ -168,14 +123,14 @@ class HasBindPoint:
             return self._bound
         else:
             return self.bound == 0
-    
+
     def __init__(self):
         self._bound = -1
         if (hasattr(self, "_max_bind")):
             self.bind = self._bind_with_point
         else:
             self.bind = self._bind
-    
+
 class HasWindows(HasBindPoint):
     def __init__(self):
         super(HasWindows, self).__init__()
@@ -307,7 +262,7 @@ class Background(HasFlags, HasWindows, HasPosition, HasBindPoint):
         other._load()
         equal = super(Background, self).__eq__(other)
         return equal
-    
+
 class CMathState(HasFlags, HasBindPoint):
 
     HALF_MAIN_SCREEN = (1 << 0)
@@ -360,7 +315,7 @@ class CMathState(HasFlags, HasBindPoint):
         equal = super(CMathState, self).__eq__(other)
         equal &= self._screen_fade == other._screen_fade
         return equal
-    
+
 class MainState(HasFlags, HasBindPoint):
 
     SPR0_ENABLE = (1 << 0)
@@ -530,7 +485,7 @@ class MainState(HasFlags, HasBindPoint):
         equal &= self._subscreen_colour == other._subscreen_colour
         equal &= self._bgcol_windows == other._bgcol_windows
         return equal
-    
+
 class Sprite(HasFlags, HasWindows, HasPosition, HasBindPoint):
 
     WIDTH_POWER = 8
@@ -643,7 +598,7 @@ class Sprite(HasFlags, HasWindows, HasPosition, HasBindPoint):
         equal &= self._graphics_x == other._graphics_x
         equal &= self._graphics_y == other._graphics_y
         return equal
-    
+
 class OAM:
     def __getitem__(self, key):
         if (not isinstance(key, int)):
@@ -665,10 +620,10 @@ class OAM:
         spr.bind(key)
         spr.bind(bind_point, False)
         return spr
-    
+
     def __len__(self):
         return SPRITE_COUNT
-    
+
 class HDMA:
     def __init__(self, table):
         self._table = table
@@ -681,7 +636,7 @@ class HDMA:
         entry = _wasm._i.exports.get_table_entry(self._table, key)
         unpacked = unpack_from('IH', _wasm._i.exports.memory.buffer, entry)
         return unpacked
-    
+
     def __setitem__(self, key, entry):
         if (not isinstance(key, int)):
             raise TypeError("HDMA index must be integer")
@@ -714,7 +669,7 @@ class MAP:
             return _wasm._i.exports.get_bg0_map(key)
         else:
             return _wasm._i.exports.get_bg1_map(key)
-    
+
     def __setitem__(self, key, tile):
         if (not isinstance(key, int)):
             raise TypeError("Map index must be integer")
@@ -728,91 +683,177 @@ class MAP:
 
     def __len__(self):
         return (MAP_HEIGHT * MAP_WIDTH)
+
+class SasppuModule(ModuleType):
+
+    SPRITE_COUNT = SPRITE_COUNT
+    SPRITE_CACHE = 16
+
+    MAP_WIDTH_POWER = MAP_WIDTH_POWER
+    MAP_HEIGHT_POWER = MAP_HEIGHT_POWER
+    MAP_WIDTH = MAP_WIDTH
+    MAP_HEIGHT = MAP_HEIGHT
+
+    IC_SUCCESS = 0
+    IC_TOO_WIDE = 1
+    IC_TOO_TALL = 2
+    IC_INVALID_BIT_DEPTH = 3
+
+    WINDOW_A = (0b0001)
+    WINDOW_B = (0b0010)
+    WINDOW_AB = (0b0100)
+    WINDOW_X = (0b1000)
+    WINDOW_ALL = (0b1111)
+
+    BPP1 = 0
+    BPP2 = 1
+    BPP4 = 2
+    BPP8 = 3
+
+    TRANSPARENT_BLACK = _wasm._i.exports.macro_TRANSPARENT_BLACK()
+    OPAQUE_BLACK = _wasm._i.exports.macro_OPAQUE_BLACK()
+    RED = _wasm._i.exports.macro_RED()
+    GREEN = _wasm._i.exports.macro_GREEN()
+    BLUE = _wasm._i.exports.macro_BLUE()
+    WHITE = _wasm._i.exports.macro_WHITE()
+
+    HDMA_NOOP = 0
+    HDMA_DISABLE = 1
+    HDMA_MAIN_STATE_MAINSCREEN_COLOUR = 2
+    HDMA_MAIN_STATE_SUBSCREEN_COLOUR = 3
+    HDMA_MAIN_STATE_WINDOW1_LEFT = 4
+    HDMA_MAIN_STATE_WINDOW1_RIGHT = 5
+    HDMA_MAIN_STATE_WINDOW2_LEFT = 6
+    HDMA_MAIN_STATE_WINDOW2_RIGHT = 7
+    HDMA_MAIN_STATE_BGCOL_WINDOWS = 8
+    HDMA_MAIN_STATE_FLAGS = 9
+    HDMA_CMATH_STATE_SCREEN_FADE = 10
+    HDMA_CMATH_STATE_FLAGS = 11
+    HDMA_BACKGROUND0_X = 12
+    HDMA_BACKGROUND0_Y = 13
+    HDMA_BACKGROUND0_WINDOWS = 14
+    HDMA_BACKGROUND0_FLAGS = 15
+    HDMA_BACKGROUND1_X = 16
+    HDMA_BACKGROUND1_Y = 17
+    HDMA_BACKGROUND1_WINDOWS = 18
+    HDMA_BACKGROUND1_FLAGS = 19
+    HDMA_HDMA_ENABLE = 20
     
-def cmath(col):
-    return _wasm._i.exports.macro_CMATH(col)
-def rgb555(r, g, b):
-    return _wasm._i.exports.macro_RGB555(r, g, b)
-def rgb555_cmath(r, g, b):
-    return _wasm._i.exports.macro_RGB555_CMATH(r, g, b)
-def rgb888(r, g, b):
-    return _wasm._i.exports.macro_RGB888(r, g, b)
-def rgb888_cmath(r, g, b):
-    return _wasm._i.exports.macro_RGB888_CMATH(r, g, b)
-def grey555(g):
-    return _wasm._i.exports.macro_GREY555(g)
-def grey555_cmath(g):
-    return _wasm._i.exports.macro_GREY555_CMATH(g)
-def grey888(g):
-    return _wasm._i.exports.macro_GREY888(g)
-def grey888_cmath(g):
-    return _wasm._i.exports.macro_GREY888_CMATH()
-def mul_channel(col, mul):
-    return _wasm._i.exports.macro_MUL_CHANNEL(col, mul)
-def mul_rgb555(r, g, b, mul):
-    return _wasm._i.exports.macro_MUL_RGB555(r, g, b, mul)
-def r_channel(col):
-    return _wasm._i.exports.macro_R_CHANNEL(col)
-def g_channel(col):
-    return _wasm._i.exports.macro_G_CHANNEL(col)
-def b_channel(col):
-    return _wasm._i.exports.macro_B_CHANNEL(col)
-def cmath_channel(col):
-    return _wasm._i.exports.macro_CMATH_CHANNEL(col)
-def mul_col(col, mul):
-    return _wasm._i.exports.macro_MUL_COL(col, mul)
-    
-def blit_sprite(x: int, y: int, width: int, height: int, data: bytes, double_size: bool = False):
-    if (len(data) < (width * height * 2)):
-        raise ValueError("Data not large enough for size")
-    p = _wasm.malloc(len(data))
-    mem = _wasm._i.exports.memory.uint8_view(p)
-    mem[0 : len(data)] = data
-    res = _wasm._i.exports.SASPPU_blit_sprite(x, y, width, height, double_size, p)
-    _wasm.free(p)
-    return res
+    @staticmethod
+    def cmath(col):
+        return _wasm._i.exports.macro_CMATH(col)
+    @staticmethod
+    def rgb555(r, g, b):
+        return _wasm._i.exports.macro_RGB555(r, g, b)
+    @staticmethod
+    def rgb555_cmath(r, g, b):
+        return _wasm._i.exports.macro_RGB555_CMATH(r, g, b)
+    @staticmethod
+    def rgb888(r, g, b):
+        return _wasm._i.exports.macro_RGB888(r, g, b)
+    @staticmethod
+    def rgb888_cmath(r, g, b):
+        return _wasm._i.exports.macro_RGB888_CMATH(r, g, b)
+    @staticmethod
+    def grey555(g):
+        return _wasm._i.exports.macro_GREY555(g)
+    @staticmethod
+    def grey555_cmath(g):
+        return _wasm._i.exports.macro_GREY555_CMATH(g)
+    @staticmethod
+    def grey888(g):
+        return _wasm._i.exports.macro_GREY888(g)
+    @staticmethod
+    def grey888_cmath(g):
+        return _wasm._i.exports.macro_GREY888_CMATH()
+    @staticmethod
+    def mul_channel(col, mul):
+        return _wasm._i.exports.macro_MUL_CHANNEL(col, mul)
+    @staticmethod
+    def mul_rgb555(r, g, b, mul):
+        return _wasm._i.exports.macro_MUL_RGB555(r, g, b, mul)
+    @staticmethod
+    def r_channel(col):
+        return _wasm._i.exports.macro_R_CHANNEL(col)
+    @staticmethod
+    def g_channel(col):
+        return _wasm._i.exports.macro_G_CHANNEL(col)
+    @staticmethod
+    def b_channel(col):
+        return _wasm._i.exports.macro_B_CHANNEL(col)
+    @staticmethod
+    def cmath_channel(col):
+        return _wasm._i.exports.macro_CMATH_CHANNEL(col)
+    @staticmethod
+    def mul_col(col, mul):
+        return _wasm._i.exports.macro_MUL_COL(col, mul)
 
-def fill_background(x: int, y: int, width: int, height: int, colour: int):
-    res = _wasm._i.exports.SASPPU_fill_background(x, y, width, height, colour)
-    return res
+    @staticmethod
+    def blit_sprite(x: int, y: int, width: int, height: int, data: bytes, double_size: bool = False):
+        if (len(data) < (width * height * 2)):
+            raise ValueError("Data not large enough for size")
+        p = _wasm.malloc(len(data))
+        mem = _wasm._i.exports.memory.uint8_view(p)
+        mem[0 : len(data)] = data
+        res = _wasm._i.exports.SASPPU_blit_sprite(x, y, width, height, double_size, p)
+        _wasm.free(p)
+        return res
 
-def draw_text_background(x: int, y: int, colour: int, line_width: int, text: str, double_size: bool = False, newline_height: int = 10):
-    data = bytes(text + "\x00", encoding="ASCII")
-    p = _wasm.malloc(len(data))
-    mem = _wasm._i.exports.memory.uint8_view(p)
-    mem[0 : len(data)] = data
-    res = _wasm._i.exports.SASPPU_draw_text_background(x, y, colour, line_width, newline_height, double_size, p)
-    _wasm.free(p)
-    return res
+    @staticmethod
+    def fill_background(x: int, y: int, width: int, height: int, colour: int):
+        res = _wasm._i.exports.SASPPU_fill_background(x, y, width, height, colour)
+        return res
 
-def get_text_size(line_width: int, text: str, double_size: bool = False, newline_height: int = 10):
-    data = bytes(text + "\x00", encoding="ASCII")
-    p = _wasm.malloc(len(data) + 8)
-    mem = _wasm._i.exports.memory.uint8_view(p)
-    mem[0 : len(data)] = data
-    mem[len(data): len(data) + 8] = [0,0,0,0,0,0,0,0]
-    _wasm._i.exports.SASPPU_get_text_size(p + len(data), p + len(data) + 4, line_width, newline_height, double_size, p)
-    (x, y) = unpack_from("II", _wasm._i.exports.memory.buffer, p + len(data))
-    _wasm.free(p)
-    return (x, y)
+    @staticmethod
+    def draw_text_background(x: int, y: int, colour: int, line_width: int, text: str, double_size: bool = False, newline_height: int = 10):
+        data = bytes(text + "\x00", encoding="ASCII")
+        p = _wasm.malloc(len(data))
+        mem = _wasm._i.exports.memory.uint8_view(p)
+        mem[0 : len(data)] = data
+        res = _wasm._i.exports.SASPPU_draw_text_background(x, y, colour, line_width, newline_height, double_size, p)
+        _wasm.free(p)
+        return res
 
-def gfx_reset():
-    _wasm._i.exports.SASPPU_gfx_reset()
+    @staticmethod
+    def get_text_size(line_width: int, text: str, double_size: bool = False, newline_height: int = 10):
+        data = bytes(text + "\x00", encoding="ASCII")
+        p = _wasm.malloc(len(data) + 8)
+        mem = _wasm._i.exports.memory.uint8_view(p)
+        mem[0 : len(data)] = data
+        mem[len(data): len(data) + 8] = [0,0,0,0,0,0,0,0]
+        _wasm._i.exports.SASPPU_get_text_size(p + len(data), p + len(data) + 4, line_width, newline_height, double_size, p)
+        (x, y) = unpack_from("II", _wasm._i.exports.memory.buffer, p + len(data))
+        _wasm.free(p)
+        return (x, y)
 
-oam = OAM()
-bg0 = MAP(0)
-bg1 = MAP(1)
-hdma_0 = HDMA(0)
-hdma_1 = HDMA(1)
-hdma_2 = HDMA(2)
-hdma_3 = HDMA(3)
-hdma_4 = HDMA(4)
-hdma_5 = HDMA(5)
-hdma_6 = HDMA(6)
-hdma_7 = HDMA(7)
+    @staticmethod
+    def gfx_reset():
+        _wasm._i.exports.SASPPU_gfx_reset()
 
-def get_hdma_enable():
-    return _wasm._i.exports.get_hdma_enable()
-def set_hdma_enable(value):
-    type_bound_u8(value, "HDMA enable")
-    _wasm._i.exports.set_hdma_enable(value)
+    oam = OAM()
+    bg0 = MAP(0)
+    bg1 = MAP(1)
+    hdma_0 = HDMA(0)
+    hdma_1 = HDMA(1)
+    hdma_2 = HDMA(2)
+    hdma_3 = HDMA(3)
+    hdma_4 = HDMA(4)
+    hdma_5 = HDMA(5)
+    hdma_6 = HDMA(6)
+    hdma_7 = HDMA(7)
+
+    @staticmethod
+    def __setattr__(name, value):
+      if name == 'hdma_enable':
+        type_bound_u8(value, "HDMA enable")
+        _wasm._i.exports.set_hdma_enable(value)
+      else:
+        globals()[name] = value
+
+    @staticmethod
+    def __getattr__(name):
+        if name == 'hdma_enable':
+            return _wasm._i.exports.get_hdma_enable()
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+sys.modules[__name__].__class__ = SasppuModule
