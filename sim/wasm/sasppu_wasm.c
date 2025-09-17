@@ -44,6 +44,7 @@ CMathState *get_cmath_state() { return &SASPPU_cmath_state; }
 Background *get_background_0() { return &SASPPU_bg0_state; }
 Background *get_background_1() { return &SASPPU_bg1_state; }
 uint8_t get_hdma_enable() { return SASPPU_hdma_enable; }
+bool get_forced_blank() { return SASPPU_forced_blank; }
 
 Sprite *get_sprite(uint8_t index) { return &SASPPU_oam[index]; }
 uint16_t get_bg0_map(uint8_t index) { return SASPPU_bg0[index]; }
@@ -65,6 +66,7 @@ void set_background_1(Background *v) {
   memcpy(&SASPPU_bg1_state, v, sizeof(Background));
 }
 void set_hdma_enable(uint8_t v) { SASPPU_hdma_enable = v; }
+void set_forced_blank(bool v) { SASPPU_forced_blank = v; }
 
 void set_sprite(uint8_t index, Sprite *v) {
   memcpy(&SASPPU_oam[index], v, sizeof(Sprite));

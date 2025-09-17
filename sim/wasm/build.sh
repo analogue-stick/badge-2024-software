@@ -77,6 +77,7 @@ _get_cmath_state,\
 _get_background_0,\
 _get_background_1,\
 _get_hdma_enable,\
+_get_forced_blank,\
 _get_sprite,\
 _get_bg0_map,\
 _get_bg1_map,\
@@ -86,6 +87,7 @@ _set_cmath_state,\
 _set_background_0,\
 _set_background_1,\
 _set_hdma_enable,\
+_set_forced_blank,\
 _set_sprite,\
 _set_bg0_map,\
 _set_bg1_map,\

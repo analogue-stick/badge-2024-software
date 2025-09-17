@@ -847,6 +847,8 @@ class SasppuModule(ModuleType):
       if name == 'hdma_enable':
         type_bound_u8(value, "HDMA enable")
         _wasm._i.exports.set_hdma_enable(value)
+      elif name == 'forced_blank':
+        _wasm._i.exports.set_forced_blank(value)
       else:
         globals()[name] = value
 
@@ -854,6 +856,8 @@ class SasppuModule(ModuleType):
     def __getattr__(name):
         if name == 'hdma_enable':
             return _wasm._i.exports.get_hdma_enable()
+        elif name == 'forced_blank':
+            return _wasm._i.exports.get_forced_blank()
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 sys.modules[__name__].__class__ = SasppuModule
