@@ -1,6 +1,8 @@
-from machine import Pin, SPI
+from machine import Pin
 import neopixel
 from egpio import ePin
+
+from tildagon_helpers import pause_async_display, resume_async_display
 
 BUS_SYSTEM = 7
 BUS_TOP = 0
@@ -81,6 +83,11 @@ class _tildagonos:
 
     def set_led_power(self, state):
         ePin(EPIN_LED_POWER)(state)
+
+    def write_leds(self):
+        pause_async_display()
+        self.leds.write()
+        resume_async_display()
 
 
 tildagonos = _tildagonos()

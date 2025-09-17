@@ -9,6 +9,8 @@
 #include "esp_wpa2.h"
 #include "driver/ledc.h"
 
+#include "freertos/semphr.h"
+
 // static const char *TAG = "tildagon_helpers";
 
 
@@ -97,6 +99,26 @@ static mp_obj_t tildagon_esp_wifi_sta_wpa2_ent_set_password(mp_obj_t pass_obj) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(tildagon_esp_wifi_sta_wpa2_ent_set_password_obj, tildagon_esp_wifi_sta_wpa2_ent_set_password);
 
+extern SemaphoreHandle_t display_mutex;
+
+static mp_obj_t tildagon_pause_async_display() {
+    if (!display_mutex) {
+        return mp_const_none;
+    }
+    while (xSemaphoreTake(display_mutex, portMAX_DELAY) == pdFALSE) {}
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(tildagon_pause_async_display_obj, tildagon_pause_async_display);
+
+static mp_obj_t tildagon_resume_async_display() {
+    if (!display_mutex) {
+        return mp_const_none;
+    }
+    xSemaphoreGive(display_mutex);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(tildagon_resume_async_display_obj, tildagon_resume_async_display);
+
 static const mp_rom_map_elem_t tildagon_helpers_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_ota) },
     { MP_ROM_QSTR(MP_QSTR_esp_sleep_pd_config), MP_ROM_PTR(&tildagon_esp_sleep_pd_config_obj) },
@@ -106,6 +128,8 @@ static const mp_rom_map_elem_t tildagon_helpers_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_esp_wifi_sta_wpa2_ent_set_identity), MP_ROM_PTR(&tildagon_esp_wifi_sta_wpa2_ent_set_identity_obj) },
     { MP_ROM_QSTR(MP_QSTR_esp_wifi_sta_wpa2_ent_set_username), MP_ROM_PTR(&tildagon_esp_wifi_sta_wpa2_ent_set_username_obj) },
     { MP_ROM_QSTR(MP_QSTR_esp_wifi_sta_wpa2_ent_set_password), MP_ROM_PTR(&tildagon_esp_wifi_sta_wpa2_ent_set_password_obj) },
+    { MP_ROM_QSTR(MP_QSTR_pause_async_display), MP_ROM_PTR(&tildagon_pause_async_display_obj) },
+    { MP_ROM_QSTR(MP_QSTR_resume_async_display), MP_ROM_PTR(&tildagon_resume_async_display_obj) },
     { MP_ROM_QSTR(MP_QSTR_ESP_PD_DOMAIN_RTC_PERIPH), MP_ROM_INT(ESP_PD_DOMAIN_RTC_PERIPH) },
     { MP_ROM_QSTR(MP_QSTR_ESP_PD_DOMAIN_RTC8M), MP_ROM_INT(ESP_PD_DOMAIN_RTC8M) },
     { MP_ROM_QSTR(MP_QSTR_ESP_PD_OPTION_OFF), MP_ROM_INT(ESP_PD_OPTION_OFF) },

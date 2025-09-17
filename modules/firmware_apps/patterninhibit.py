@@ -20,7 +20,7 @@ class PatternInhibit(app.App):
         asyncio.sleep(0.5)
         for i in range(1, 13):
             tildagonos.leds[i] = (int(i * (255 / 12)), 0, 0)
-        tildagonos.leds.write()
+        tildagonos.write_leds()
 
     def update(self, delta):
         if self.button_states.get(BUTTON_TYPES["CANCEL"]):

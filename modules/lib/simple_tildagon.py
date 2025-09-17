@@ -21,7 +21,7 @@ class led:
         led._setup_leds()
 
         tildagonos.leds[led_number] = state
-        tildagonos.leds.write()
+        tildagonos.write_leds()
 
 
 class button:

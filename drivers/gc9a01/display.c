@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/idf_additions.h"
+#include "freertos/semphr.h"
 
 static float smoothed_fps = 0.0f;
 
@@ -24,7 +25,11 @@ static inline void gfx_fps_update(void) {
 
 static bool gfx_inited = false;
 
+SemaphoreHandle_t display_mutex = NULL;
+StaticSemaphore_t display_mutex_buffer;
+
 static mp_obj_t gfx_init() {
+    display_mutex = xSemaphoreCreateMutexStatic(&display_mutex_buffer);
     if (!gfx_inited) {
         st3m_counter_rate_init(&rast_rate);
         flow3r_bsp_display_init();
@@ -63,9 +68,13 @@ static portTASK_FUNCTION(vADisplayFlip, pvParameters) {
                 xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
             }
 
+            while (xSemaphoreTake(display_mutex, portMAX_DELAY) == pdFALSE) {}
+
             flow3r_bsp_display_send_fb(tildagon_fb + (TILDAGON_DISPLAY_WIDTH * TILDAGON_DISPLAY_HEIGHT * 2 / 4) * i, i);
             // int64_t now = esp_timer_get_time();
             // mp_printf(&mp_plat_print, "display sect %u flip time: %uus\n", i, now - then);
+
+            xSemaphoreGive(display_mutex);
 
             fb_sect_state[i] = FB_INVALID;
         }

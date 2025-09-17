@@ -281,7 +281,7 @@ class OtaUpdate(App):
                     tildagonos.leds[i] = tuple(
                         int(j * brightness) for j in tildagonos.leds[i]
                     )
-            tildagonos.leds.write()
+            tildagonos.write_leds()
 
         return True
 

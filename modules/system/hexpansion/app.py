@@ -37,7 +37,7 @@ def Hexspansion_inserted(epin):
             else:
                 tildagonos.leds[13 + i] = led_colours[i]
             eventbus.emit(HexpansionInsertionEvent(port=i + 1))
-            tildagonos.leds.write()
+            tildagonos.write_leds()
 
 
 def Hexspansion_removed(epin):
@@ -45,7 +45,7 @@ def Hexspansion_removed(epin):
         if nPin is epin:
             tildagonos.leds[13 + i] = (0, 0, 0)
             eventbus.emit(HexpansionRemovalEvent(port=i + 1))
-            tildagonos.leds.write()
+            tildagonos.write_leds()
 
 
 class HexpansionManagerApp(app.App):
@@ -82,7 +82,7 @@ class HexpansionManagerApp(app.App):
                 else:
                     tildagonos.leds[13 + i] = led_colours[i]
                 eventbus.emit(HexpansionInsertionEvent(port=i + 1))
-        tildagonos.leds.write()
+        tildagonos.write_leds()
 
     def update(self, delta):
         if len(self.format_requests) > 0 and self.format_dialog is None:

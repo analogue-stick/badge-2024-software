@@ -186,6 +186,17 @@ static IRAM_ATTR void flow3r_bsp_gc9a01_pre_transfer_callback(
     gpio_set_level(tx->gc9a01->config->pin_dc, tx->dc);
 }
 
+extern TaskHandle_t display_flip_task;
+
+// This function is called (in irq context!) just after a transmission ends.
+static IRAM_ATTR void flow3r_bsp_gc9a01_post_transfer_callback(
+    spi_transaction_t *_) {
+    if (display_flip_task)
+    {
+        xTaskNotifyFromISR(display_flip_task, 0, eNoAction, NULL);
+    }
+}
+
 /* Send a command to the LCD. Uses spi_device_polling_transmit, which waits
  * until the transfer is complete.
  *
@@ -459,6 +470,7 @@ esp_err_t flow3r_bsp_gc9a01_init(flow3r_bsp_gc9a01_t *gc9a01,
         .spics_io_num = gc9a01->config->pin_cs,
         .queue_size = 7,
         .pre_cb = flow3r_bsp_gc9a01_pre_transfer_callback,
+        .post_cb = flow3r_bsp_gc9a01_post_transfer_callback,
     };
 
     esp_err_t ret =
@@ -636,7 +648,16 @@ esp_err_t flow3r_bsp_gc9a01_blit_full(flow3r_bsp_gc9a01_t *gc9a01, const void *f
         if (res != ESP_OK) {
             return res;
         }
+#if BLIT_LONG_WAIT
         res = flow3r_bsp_gc9a01_blit_wait_done(&blit, portMAX_DELAY);
+#else
+        do {
+            res = flow3r_bsp_gc9a01_blit_wait_done(&blit, 0);
+            if (res == ESP_ERR_TIMEOUT) {
+                xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(16));
+            }
+        } while(res == ESP_ERR_TIMEOUT);
+#endif
         if (res != ESP_OK) {
             return res;
         }

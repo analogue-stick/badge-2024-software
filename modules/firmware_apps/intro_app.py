@@ -77,7 +77,7 @@ class IntroApp(app.App):
             for i in range(12):
                 tildagonos.leds[i] = (0, 0, 0)
 
-        tildagonos.leds.write()
+        tildagonos.write_leds()
         return True
 
     def draw_background(self, ctx):

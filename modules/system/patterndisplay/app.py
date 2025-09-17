@@ -48,7 +48,7 @@ class PatternDisplay(App):
                         )
                     else:
                         tildagonos.leds[led + 1] = next_frame[led]
-                tildagonos.leds.write()
+                tildagonos.write_leds()
             if not self._p.fps:
                 break
             await asyncio.sleep(1 / self._p.fps)
