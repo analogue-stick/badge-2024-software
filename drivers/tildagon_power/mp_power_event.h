@@ -14,6 +14,7 @@ typedef enum
     MP_POWER_EVENT_DEVICE_DETACH,    
     MP_POWER_EVENT_LANYARD_ATTACH,   
     MP_POWER_EVENT_LANYARD_DETACH,
+    MP_POWER_EVENT_VENDOR_MESSAGE,
     MP_POWER_EVENT_MAX            
 } mp_power_event_t;
 

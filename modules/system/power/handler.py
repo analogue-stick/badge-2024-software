@@ -14,6 +14,7 @@ class PowerEventHandler:
         pe.set_host_detach_cb(self.HostDetachHandler)
         pe.set_lanyard_attach_cb(self.LanyardAttachHandler)
         pe.set_lanyard_detach_cb(self.LanyardDetachHandler)
+        pe.set_vendor_message_cb(self.VendorMessageHandler)
 
     def ChargeEventHandler(self):
         eventbus.emit(
@@ -51,4 +52,9 @@ class PowerEventHandler:
     def LanyardDetachHandler(self):
         eventbus.emit(
             events.RequestLanyardDetachEvent(events.PowerEvent("Lanyard Detatched"))
+        )
+
+    def VendorMessageHandler(self):
+        eventbus.emit(
+            events.RequestVendorMessageEvent(events.PowerEvent("Vendor Message"))
         )

@@ -21,3 +21,6 @@ def set_lanyard_attach_cb(handler):
 
 def set_lanyard_detach_cb(handler):
     pass
+
+def set_vendor_message_cb(handler):
+    pass

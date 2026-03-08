@@ -35,6 +35,12 @@ extern void tildagon_power_off( void );
  * @brief turn the 5V supply on or off
  */
 extern void tildagon_power_enable_5v( bool enable );
+/**
+ * @brief send a vendor defined message
+ * @param app_id the app id
+ * @param data the data to send
+ */
+extern void tildagon_send_vdm(uint16_t app_id, uint8_t data[24]);
 
 
 #endif

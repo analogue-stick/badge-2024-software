@@ -141,6 +141,12 @@ typedef union
 #define PD_VARIABLE_SUPPLY 2U
 #define PD_MAX_TX_MSG_SIZE 50 
 #define PD_VENDOR_ID 0xCDCD
+#define PD_TILDA_APP_ID 0x0000
+
+typedef struct {
+    uint16_t app_id;
+    uint8_t data[24];   
+} pd_vdm_message_t;
 
 typedef struct
 {
@@ -156,17 +162,18 @@ typedef struct
     pd_data_message_types_t last_rx_data_msg_type;      
     uint8_t badge_id[8];
     uint8_t rx_badge_id[8];            
+    pd_vdm_message_t vdm;
 } pd_state_t;
 
 /**
  * @brief parse and decode the receive buffer
- * @param state the comms state onject
+ * @param state the comms state object
  * @param fusb the object for the fusb to use
  */
 extern void fusbpd_decode( pd_state_t* state, fusb_state_t* fusb );
 /**
  * @brief creat a request power message 
- * @param state the comms state onject
+ * @param state the comms state object
  * @param num the index of the pdo list sent from the source
  * @param current the current required to run the device
  * @param max_current the maximum current required by the device
@@ -174,13 +181,20 @@ extern void fusbpd_decode( pd_state_t* state, fusb_state_t* fusb );
 extern void fusbpd_request_power( pd_state_t* state, uint8_t num, uint16_t current, uint16_t max_current );
 /**
  * @brief create a request source capabilities message
- * @param state the comms state onject
+ * @param state the comms state object
  */            
 extern void fusbpd_request_capability( pd_state_t* state );
 /**
- * @brief create a vendor specific pdo message with the esp32 unique id
- * @param state the comms state onject
+ * @brief create a vendor specific pdo message
+ * @param state the comms state object
+ * @param app_id the app id
+ * @param data the data to send
  */
-extern void fusbpd_vendor_specific( pd_state_t* state );
+extern void fusbpd_vendor_specific( pd_state_t* state, uint16_t app_id, uint8_t data[24] );
+/**
+ * @brief create a vendor specific pdo message with the esp32 unique id
+ * @param state the comms state object
+ */
+extern void fusbpd_vendor_specific_badge_id( pd_state_t* state );
 
 #endif /* FUSB302B_PD_H */

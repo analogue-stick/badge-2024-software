@@ -77,6 +77,14 @@ static mp_obj_t mp_power_lanyard_detach_set_cb(mp_obj_t cb)
 
 static MP_DEFINE_CONST_FUN_OBJ_1(mp_power_event_lanyard_detach_set_cb_obj, mp_power_lanyard_detach_set_cb);
 
+static mp_obj_t mp_power_vendor_message_set_cb(mp_obj_t cb) 
+{
+    callbacks[MP_POWER_EVENT_VENDOR_MESSAGE] = cb;
+    return mp_const_none;
+}
+
+static MP_DEFINE_CONST_FUN_OBJ_1(mp_power_event_vendor_message_set_cb_obj, mp_power_vendor_message_set_cb);
+
 
 static const mp_rom_map_elem_t power_event_globals_table[] = 
 {
@@ -89,6 +97,7 @@ static const mp_rom_map_elem_t power_event_globals_table[] =
     { MP_ROM_QSTR(MP_QSTR_set_device_detach_cb), MP_ROM_PTR(&mp_power_event_device_detach_set_cb_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_lanyard_attach_cb), MP_ROM_PTR(&mp_power_event_lanyard_attach_set_cb_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_lanyard_detach_cb), MP_ROM_PTR(&mp_power_event_lanyard_detach_set_cb_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_vendor_message_cb), MP_ROM_PTR(&mp_power_event_vendor_message_set_cb_obj) },
 };
 
 static MP_DEFINE_CONST_DICT(power_event_globals, power_event_globals_table);

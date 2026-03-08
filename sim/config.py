@@ -5,10 +5,10 @@ import pygame
 # reference for the correct pygame key constant names.
 
 button_map = {
-    "left_jog_left": pygame.K_1,
-    "left_press": pygame.K_2,
-    "left_jog_right": pygame.K_3,
-    "right_jog_left": pygame.K_8,
-    "right_press": pygame.K_9,
-    "right_jog_right": pygame.K_0,
+    "left_jog_left": pygame.K_w,
+    "left_press": pygame.K_d,
+    "left_jog_right": pygame.K_e,
+    "right_jog_left": pygame.K_s,
+    "right_press": pygame.K_a,
+    "right_jog_right": pygame.K_q,
 }
