@@ -1,5 +1,6 @@
 set(IDF_TARGET esp32s3)
 
+cmake_policy(SET CMP0152 OLD)
 
 # Additional IDF components
 set(IDF_COMPONENTS
@@ -9,9 +10,6 @@ set(IDF_COMPONENTS
     flow3r_bsp
     tildagon
     sasppu
-)
-set(EXTRA_COMPONENT_DIRS
-    "${CMAKE_CURRENT_LIST_DIR}/../../../../../components/"
 )
 
 if(NOT GIT_FOUND)
@@ -24,12 +22,22 @@ file(
         FIRMWARE_ROOT
         BASE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
 )
+
+set(EXTRA_COMPONENT_DIRS
+    "${FIRMWARE_ROOT}/components/"
+)
+
+
 execute_process(
         COMMAND "python" "components/st3m/host-tools/version.py"
         WORKING_DIRECTORY "${FIRMWARE_ROOT}"
         RESULT_VARIABLE res
         OUTPUT_VARIABLE TILDAGON_GIT_VERSION
         OUTPUT_STRIP_TRAILING_WHITESPACE)
+set(
+    CONFIG_APP_PROJECT_VER
+    "${TILDAGON_GIT_VERSION}"
+)
 message("TILDAGON_GIT_VERSION=${TILDAGON_GIT_VERSION}")
 message("Location=${FIRMWARE_ROOT}")
 configure_file("${CMAKE_CURRENT_LIST_DIR}/sdkconfig.project_ver.in" "${CMAKE_CURRENT_LIST_DIR}/../../build-tildagon/sdkconfig.project_ver")
@@ -37,7 +45,6 @@ configure_file("${CMAKE_CURRENT_LIST_DIR}/sdkconfig.project_ver.in" "${CMAKE_CUR
 # Config settings
 set(SDKCONFIG_DEFAULTS
     boards/sdkconfig.base
-    boards/sdkconfig.usb
     boards/sdkconfig.ble
     boards/sdkconfig.240mhz
     boards/sdkconfig.spiram_sx

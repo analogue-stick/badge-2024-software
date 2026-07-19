@@ -10,16 +10,34 @@
   <body>
     <div class="content">
       <h1>Provision a Tildagon</h1>
-      <li>1. Power off the badge from the menu, if it's already powered on.</li>
-      <li>2. Hold <b>boop</b> while plugging USB into <b>USB in</b>.</li>
-      <li>3. Keep holding <b>boop</b> until you click <b>Connect</b> and click on the badge COM port. The device name should appears as <code>USB JTAG/serial debug unit</code></li>
-      <li>4. Let go of the <b>boop</b></li>
-      <li>5. Select <b>Install Tildagon</b>, and wait.</li>
+      <ol>
+        <li>Power off the badge from the menu, if it's already powered on.</li>
+        <li>Hold <b>boop</b> while plugging USB into <b>USB in</b>.</li>
+        <li>Keep holding <b>boop</b> until you click <b>Connect</b> and click on the badge COM port. The device name should appears as <code>USB JTAG/serial debug unit</code>.
+          <br><em>Note:</em> If you see <code>Espressif CDC Device</code>, power off the badge and try these steps again, holding down the <b>boop</b> button for longer.</li>
+        <li>Let go of the <b>boop</b> after you have selected the right device and see the "Connecting" spinner.</li>
+        <li>Select <b>Install Tildagon</b>, and wait.</li>
+      </ol>
       <p>For more information, see <a href="https://tildagon.badge.emfcamp.org/using-the-badge/flash-the-badge/">Flash the badge</a>.</p>
       <br>
       <esp-web-install-button
         manifest="manifest.json"></esp-web-install-button>
       
+      <esp-web-install-button
+        manifest="provision.json">
+        <button slot="activate" style="position: relative;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 24px;
+    color: var(--esp-tools-button-text-color, #fff);
+    background-color: var(--esp-tools-button-color, #03a9f4);
+    border: none;
+    border-radius: var(--esp-tools-button-border-radius, 9999px);
+background-color: #F5515E">Factory reset</button>
+        <span slot="unsupported">Ah snap, your browser doesn't work!</span>
+        <span slot="not-allowed">Ah snap, you are not allowed to use this on HTTP!</span>
+      </esp-web-install-button>
     </div>
   </body>
 </html>

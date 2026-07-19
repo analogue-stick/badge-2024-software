@@ -1,10 +1,23 @@
-#include <stdlib.h>
 #include "py/binary.h"
 #include "py/obj.h"
 #include "py/objarray.h"
+#include "py/objstr.h"
 #include "py/runtime.h"
+#include <stdlib.h>
 
 #include "mp_uctx.h"
+
+#ifdef EMSCRIPTEN
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
+#pragma GCC diagnostic ignored "-Wfloat-conversion"
+Ctx *ctx_host(void);
+
+#define esp_random rand
+#endif
+
+#ifndef EMSCRIPTEN
+#include "esp_random.h"
+#endif
 
 void gc_collect(void);
 #ifdef EMSCRIPTEN
@@ -12,180 +25,204 @@ extern int _mp_quit;
 void mp_idle(int ms);
 #else
 void mp_idle(int ms) {
-    if (ms == 0) gc_collect();
+  if (ms == 0)
+    gc_collect();
 }
 #endif
+
+static int no_replace = -1;
+
+mp_obj_t remove_leg(mp_obj_t str_in) {
+  /* Once per boot, generate a random number 0-7. If the number is >0, make this
+  function a no-op. If it is 0, this function will do a micropython string
+  replace into a temporary buffer, to replace \u81e9 with \u71e9 on all ctx text
+  calls.
+  */
+  if (no_replace == -1)
+    no_replace = (esp_random() % 8);
+  if (no_replace)
+    return str_in;
+
+  GET_STR_DATA_LEN(str_in, s, l);
+
+  vstr_t vstr;
+  vstr_init(&vstr, l);
+
+  for (size_t i = 0; i < l;) {
+    if (i + 3 <= l && s[i] == 0xE8 && s[i + 1] == 0x87 && s[i + 2] == 0xA9) {
+      vstr_add_byte(&vstr, 0xE7);
+      vstr_add_byte(&vstr, 0x87);
+      vstr_add_byte(&vstr, 0xA9);
+      i += 3;
+    } else {
+      vstr_add_byte(&vstr, s[i]);
+      i += 1;
+    }
+  }
+
+  return mp_obj_new_str_from_vstr(&vstr);
+}
 
 void gc_collect(void);
 /* since a lot of the ctx API has similar function signatures, we use macros to
  * avoid repeating the marshalling of arguments
  */
-#define MP_CTX_COMMON_FUN_0(name)                     \
-    static mp_obj_t mp_ctx_##name(mp_obj_t self_in) { \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);  \
-        ctx_##name(self->ctx);                        \
-        return self_in;                               \
-    }                                                 \
-    MP_DEFINE_CONST_FUN_OBJ_1(mp_ctx_##name##_obj, mp_ctx_##name);
+#define MP_CTX_COMMON_FUN_0(name)                                              \
+  static mp_obj_t mp_ctx_##name(mp_obj_t self_in) {                            \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);                               \
+    ctx_##name(self->ctx);                                                     \
+    return self_in;                                                            \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_1(mp_ctx_##name##_obj, mp_ctx_##name);
 
-#define MP_CTX_COMMON_FUN_1F(name)                                   \
-    static mp_obj_t mp_ctx_##name(mp_obj_t self_in, mp_obj_t arg1) { \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);                 \
-        ctx_##name(self->ctx, (float)mp_obj_get_float(arg1));        \
-        return self_in;                                              \
-    }                                                                \
-    MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_##name##_obj, mp_ctx_##name);
+#define MP_CTX_COMMON_FUN_1F(name)                                             \
+  static mp_obj_t mp_ctx_##name(mp_obj_t self_in, mp_obj_t arg1) {             \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);                               \
+    ctx_##name(self->ctx, (float)mp_obj_get_float(arg1));                      \
+    return self_in;                                                            \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_##name##_obj, mp_ctx_##name);
 
-#define MP_CTX_COMMON_FUN_1I(name)                                   \
-    static mp_obj_t mp_ctx_##name(mp_obj_t self_in, mp_obj_t arg1) { \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);                 \
-        ctx_##name(self->ctx, mp_obj_get_int(arg1));                 \
-        return self_in;                                              \
-    }                                                                \
-    MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_##name##_obj, mp_ctx_##name);
+#define MP_CTX_COMMON_FUN_1I(name)                                             \
+  static mp_obj_t mp_ctx_##name(mp_obj_t self_in, mp_obj_t arg1) {             \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);                               \
+    ctx_##name(self->ctx, mp_obj_get_int(arg1));                               \
+    return self_in;                                                            \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_##name##_obj, mp_ctx_##name);
 
-#define MP_CTX_COMMON_FUN_2F(name)                                 \
-    static mp_obj_t mp_ctx_##name(mp_obj_t self_in, mp_obj_t arg1, \
-                                  mp_obj_t arg2) {                 \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);               \
-        ctx_##name(self->ctx, (float)mp_obj_get_float(arg1),       \
-                   (float)mp_obj_get_float(arg2));                 \
-        return self_in;                                            \
-    }                                                              \
-    MP_DEFINE_CONST_FUN_OBJ_3(mp_ctx_##name##_obj, mp_ctx_##name);
+#define MP_CTX_COMMON_FUN_2F(name)                                             \
+  static mp_obj_t mp_ctx_##name(mp_obj_t self_in, mp_obj_t arg1,               \
+                                mp_obj_t arg2) {                               \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);                               \
+    ctx_##name(self->ctx, (float)mp_obj_get_float(arg1),                       \
+               (float)mp_obj_get_float(arg2));                                 \
+    return self_in;                                                            \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_3(mp_ctx_##name##_obj, mp_ctx_##name);
 
-#define MP_CTX_COMMON_FUN_3F(name)                                       \
-    static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) { \
-        assert(n_args == 4);                                             \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                     \
-        ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),          \
-                   (float)mp_obj_get_float(args[2]),                     \
-                   (float)mp_obj_get_float(args[3]));                    \
-        return args[0];                                                  \
-    }                                                                    \
-    MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 4, 4,       \
-                                        mp_ctx_##name);
+#define MP_CTX_COMMON_FUN_3F(name)                                             \
+  static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {         \
+    assert(n_args == 4);                                                       \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                               \
+    ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),                    \
+               (float)mp_obj_get_float(args[2]),                               \
+               (float)mp_obj_get_float(args[3]));                              \
+    return args[0];                                                            \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 4, 4, mp_ctx_##name);
 
-#define MP_CTX_COMMON_FUN_4F(name)                                       \
-    static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) { \
-        assert(n_args == 5);                                             \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                     \
-        ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),          \
-                   (float)mp_obj_get_float(args[2]),                     \
-                   (float)mp_obj_get_float(args[3]),                     \
-                   (float)mp_obj_get_float(args[4]));                    \
-        return args[0];                                                  \
-    }                                                                    \
-    MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 5, 5,       \
-                                        mp_ctx_##name);
+#define MP_CTX_COMMON_FUN_4F(name)                                             \
+  static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {         \
+    assert(n_args == 5);                                                       \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                               \
+    ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),                    \
+               (float)mp_obj_get_float(args[2]),                               \
+               (float)mp_obj_get_float(args[3]),                               \
+               (float)mp_obj_get_float(args[4]));                              \
+    return args[0];                                                            \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 5, 5, mp_ctx_##name);
 
-#define MP_CTX_COMMON_FUN_5F(name)                                       \
-    static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) { \
-        assert(n_args == 6);                                             \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                     \
-        ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),          \
-                   (float)mp_obj_get_float(args[2]),                     \
-                   (float)mp_obj_get_float(args[3]),                     \
-                   (float)mp_obj_get_float(args[4]),                     \
-                   (float)mp_obj_get_float(args[5]));                    \
-        return args[0];                                                  \
-    }                                                                    \
-    MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 6, 6,       \
-                                        mp_ctx_##name);
+#define MP_CTX_COMMON_FUN_5F(name)                                             \
+  static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {         \
+    assert(n_args == 6);                                                       \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                               \
+    ctx_##name(                                                                \
+        self->ctx, (float)mp_obj_get_float(args[1]),                           \
+        (float)mp_obj_get_float(args[2]), (float)mp_obj_get_float(args[3]),    \
+        (float)mp_obj_get_float(args[4]), (float)mp_obj_get_float(args[5]));   \
+    return args[0];                                                            \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 6, 6, mp_ctx_##name);
 
-#define MP_CTX_COMMON_FUN_6F(name)                                       \
-    static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) { \
-        assert(n_args == 7);                                             \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                     \
-        ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),          \
-                   (float)mp_obj_get_float(args[2]),                     \
-                   (float)mp_obj_get_float(args[3]),                     \
-                   (float)mp_obj_get_float(args[4]),                     \
-                   (float)mp_obj_get_float(args[5]),                     \
-                   (float)mp_obj_get_float(args[6]));                    \
-        return self;                                                     \
-    }                                                                    \
-    MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 7, 7,       \
-                                        mp_ctx_##name);
+#define MP_CTX_COMMON_FUN_6F(name)                                             \
+  static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {         \
+    assert(n_args == 7);                                                       \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                               \
+    ctx_##name(                                                                \
+        self->ctx, (float)mp_obj_get_float(args[1]),                           \
+        (float)mp_obj_get_float(args[2]), (float)mp_obj_get_float(args[3]),    \
+        (float)mp_obj_get_float(args[4]), (float)mp_obj_get_float(args[5]),    \
+        (float)mp_obj_get_float(args[6]));                                     \
+    return self;                                                               \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 7, 7, mp_ctx_##name);
 
 #define MP_CTX_COMMON_FUN_6FI(name)                                            \
-    static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {       \
-        assert(n_args == 7);                                                   \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                           \
-        ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),                \
-                   (float)mp_obj_get_float(args[2]),                           \
-                   (float)mp_obj_get_float(args[3]),                           \
-                   (float)mp_obj_get_float(args[4]),                           \
-                   (float)mp_obj_get_float(args[5]), mp_obj_get_int(args[6])); \
-        return self;                                                           \
+  static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {         \
+    assert(n_args == 7);                                                       \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                               \
+    ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),                    \
+               (float)mp_obj_get_float(args[2]),                               \
+               (float)mp_obj_get_float(args[3]),                               \
+               (float)mp_obj_get_float(args[4]),                               \
+               (float)mp_obj_get_float(args[5]), mp_obj_get_int(args[6]));     \
+    return self;                                                               \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 7, 7, mp_ctx_##name);
+
+#define MP_CTX_COMMON_FUN_7F(name)                                             \
+  static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {         \
+    assert(n_args == 8);                                                       \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                               \
+    ctx_##name(                                                                \
+        self->ctx, (float)mp_obj_get_float(args[1]),                           \
+        (float)mp_obj_get_float(args[2]), (float)mp_obj_get_float(args[3]),    \
+        (float)mp_obj_get_float(args[4]), (float)mp_obj_get_float(args[5]),    \
+        (float)mp_obj_get_float(args[6]), (float)mp_obj_get_float(args[7]));   \
+    return self;                                                               \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 8, 8, mp_ctx_##name);
+
+#define MP_CTX_COMMON_FUN_9F(name)                                             \
+  static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {         \
+    assert(n_args == 10);                                                      \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                               \
+    ctx_##name(                                                                \
+        self->ctx, (float)mp_obj_get_float(args[1]),                           \
+        (float)mp_obj_get_float(args[2]), (float)mp_obj_get_float(args[3]),    \
+        (float)mp_obj_get_float(args[4]), (float)mp_obj_get_float(args[5]),    \
+        (float)mp_obj_get_float(args[6]), (float)mp_obj_get_float(args[7]),    \
+        (float)mp_obj_get_float(args[8]), (float)mp_obj_get_float(args[9]));   \
+    return self;                                                               \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 10, 10,             \
+                                      mp_ctx_##name);
+
+#define MP_CTX_TEXT_FUNB(name)                                                 \
+  static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {         \
+    assert(n_args == 4);                                                       \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                               \
+    ctx_##name(self->ctx, mp_obj_str_get_str(args[1]),                         \
+               (float)mp_obj_get_float(args[2]),                               \
+               (float)mp_obj_get_float(args[3]));                              \
+    return args[0];                                                            \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 4, 4, mp_ctx_##name);
+
+#define MP_CTX_TEXT_FUN(name)                                                  \
+  static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) {         \
+    assert(n_args == 2);                                                       \
+    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                               \
+    mp_obj_t callee[3];                                                        \
+    if (self->a11y != MP_OBJ_NULL && self->a11y != mp_const_none) {            \
+      mp_load_method(self->a11y, MP_QSTR_collect_text, callee);                \
+      callee[2] = args[1];                                                     \
+      mp_call_method_n_kw(1, 0, callee);                                       \
     }                                                                          \
-    MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 7, 7,             \
-                                        mp_ctx_##name);
+    ctx_##name(self->ctx, mp_obj_str_get_str(remove_leg(args[1])));            \
+    return args[0];                                                            \
+  }                                                                            \
+  MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 2, 2, mp_ctx_##name);
 
-#define MP_CTX_COMMON_FUN_7F(name)                                       \
-    static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) { \
-        assert(n_args == 8);                                             \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                     \
-        ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),          \
-                   (float)mp_obj_get_float(args[2]),                     \
-                   (float)mp_obj_get_float(args[3]),                     \
-                   (float)mp_obj_get_float(args[4]),                     \
-                   (float)mp_obj_get_float(args[5]),                     \
-                   (float)mp_obj_get_float(args[6]),                     \
-                   (float)mp_obj_get_float(args[7]));                    \
-        return self;                                                     \
-    }                                                                    \
-    MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 8, 8,       \
-                                        mp_ctx_##name);
-
-#define MP_CTX_COMMON_FUN_9F(name)                                       \
-    static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) { \
-        assert(n_args == 10);                                            \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                     \
-        ctx_##name(self->ctx, (float)mp_obj_get_float(args[1]),          \
-                   (float)mp_obj_get_float(args[2]),                     \
-                   (float)mp_obj_get_float(args[3]),                     \
-                   (float)mp_obj_get_float(args[4]),                     \
-                   (float)mp_obj_get_float(args[5]),                     \
-                   (float)mp_obj_get_float(args[6]),                     \
-                   (float)mp_obj_get_float(args[7]),                     \
-                   (float)mp_obj_get_float(args[8]),                     \
-                   (float)mp_obj_get_float(args[9]));                    \
-        return self;                                                     \
-    }                                                                    \
-    MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 10, 10,     \
-                                        mp_ctx_##name);
-
-#define MP_CTX_TEXT_FUNB(name)                                           \
-    static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) { \
-        assert(n_args == 4);                                             \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                     \
-        ctx_##name(self->ctx, mp_obj_str_get_str(args[1]),               \
-                   (float)mp_obj_get_float(args[2]),                     \
-                   (float)mp_obj_get_float(args[3]));                    \
-        return args[0];                                                  \
-    }                                                                    \
-    MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 4, 4,       \
-                                        mp_ctx_##name);
-
-#define MP_CTX_TEXT_FUN(name)                                            \
-    static mp_obj_t mp_ctx_##name(size_t n_args, const mp_obj_t *args) { \
-        assert(n_args == 2);                                             \
-        mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);                     \
-        ctx_##name(self->ctx, mp_obj_str_get_str(args[1]));              \
-        return args[0];                                                  \
-    }                                                                    \
-    MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_##name##_obj, 2, 2,       \
-                                        mp_ctx_##name);
-
-#define MP_CTX_ATTR(name) \
-    { MP_ROM_QSTR(MP_QSTR_##name), MP_ROM_INT(0) }
-#define MP_CTX_INT_CONSTANT_UNPREFIXED(ident) \
-    { MP_ROM_QSTR(MP_QSTR_##ident), MP_ROM_INT((int)CTX_##ident) }
-#define MP_CTX_INT_CONSTANT(prefix, ident) \
-    { MP_ROM_QSTR(MP_QSTR_##ident), MP_ROM_INT((int)CTX_##prefix##_##ident) }
-#define MP_CTX_METHOD(name) \
-    { MP_ROM_QSTR(MP_QSTR_##name), MP_ROM_PTR(&mp_ctx_##name##_obj) }
+#define MP_CTX_ATTR(name) {MP_ROM_QSTR(MP_QSTR_##name), MP_ROM_INT(0)}
+#define MP_CTX_INT_CONSTANT_UNPREFIXED(ident)                                  \
+  {MP_ROM_QSTR(MP_QSTR_##ident), MP_ROM_INT((int)CTX_##ident)}
+#define MP_CTX_INT_CONSTANT(prefix, ident)                                     \
+  {MP_ROM_QSTR(MP_QSTR_##ident), MP_ROM_INT((int)CTX_##prefix##_##ident)}
+#define MP_CTX_METHOD(name)                                                    \
+  {MP_ROM_QSTR(MP_QSTR_##name), MP_ROM_PTR(&mp_ctx_##name##_obj)}
 
 /* CTX API functions {{{ */
 
@@ -240,7 +277,6 @@ MP_CTX_COMMON_FUN_4F(conic_gradient);
 MP_CTX_COMMON_FUN_6F(radial_gradient);
 
 MP_CTX_COMMON_FUN_3F(logo);
-
 
 #if 0
 
@@ -345,76 +381,84 @@ MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_pointer_drop_obj, 6, 6, mp_ctx_pointe
 #endif
 
 static mp_obj_t mp_ctx_line_dash(mp_obj_t self_in, mp_obj_t dashes_in) {
-    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
 
-    size_t count = mp_obj_get_int(mp_obj_len(dashes_in));
-    float *dashes = m_malloc(sizeof(float) * count);
-    for (size_t i = 0; i < count; i++) {
-        dashes[i] = (float)mp_obj_get_float(
-            mp_obj_subscr(dashes_in, mp_obj_new_int(i), MP_OBJ_SENTINEL));
-    }
+  size_t count = mp_obj_get_int(mp_obj_len(dashes_in));
+  float *dashes = m_malloc(sizeof(float) * count);
+  for (size_t i = 0; i < count; i++) {
+    dashes[i] = (float)mp_obj_get_float(
+        mp_obj_subscr(dashes_in, mp_obj_new_int(i), MP_OBJ_SENTINEL));
+  }
 
-    ctx_line_dash(self->ctx, dashes, count);
+  ctx_line_dash(self->ctx, dashes, count);
 
 #if MICROPY_MALLOC_USES_ALLOCATED_SIZE
-    m_free(dashes, sizeof(float) * count);
+  m_free(dashes, sizeof(float) * count);
 #else
-    m_free(dashes);
+  m_free(dashes);
 #endif
-    return self_in;
+  return self_in;
 }
 MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_line_dash_obj, mp_ctx_line_dash);
 
 static mp_obj_t mp_ctx_in_fill(mp_obj_t self_in, mp_obj_t arg1, mp_obj_t arg2) {
-    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    return mp_obj_new_bool(ctx_in_fill(self->ctx, (float)mp_obj_get_float(arg1),
-                                       (float)mp_obj_get_float(arg2)));
+  mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  return mp_obj_new_bool(ctx_in_fill(self->ctx, (float)mp_obj_get_float(arg1),
+                                     (float)mp_obj_get_float(arg2)));
 }
 MP_DEFINE_CONST_FUN_OBJ_3(mp_ctx_in_fill_obj, mp_ctx_in_fill);
 
 static mp_obj_t mp_ctx_texture(size_t n_args, const mp_obj_t *args) {
-    mp_buffer_info_t buffer_info;
-    assert(n_args == 7);
-    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);
+  mp_buffer_info_t buffer_info;
+  assert(n_args == 7);
+  mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);
 
-    if (!mp_get_buffer(args[1], &buffer_info, MP_BUFFER_READ)) {
-        mp_raise_TypeError("not a buffer");
-    }
-    int format = mp_obj_get_int(args[2]);
-    int width = mp_obj_get_int(args[3]);
-    int height = mp_obj_get_int(args[4]);
-    int stride = mp_obj_get_int(args[5]);
-    ctx_define_texture(self->ctx, NULL, width, height, stride, format,
-                       buffer_info.buf, NULL);
-    return args[0];
+  if (!mp_get_buffer(args[1], &buffer_info, MP_BUFFER_READ)) {
+    mp_raise_TypeError(MP_ERROR_TEXT("not a buffer"));
+  }
+  int format = mp_obj_get_int(args[2]);
+  int width = mp_obj_get_int(args[3]);
+  int height = mp_obj_get_int(args[4]);
+  int stride = mp_obj_get_int(args[5]);
+  ctx_define_texture(self->ctx, NULL, width, height, stride, format,
+                     buffer_info.buf, NULL);
+  return args[0];
 }
 MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_texture_obj, 6, 6, mp_ctx_texture);
 
 static mp_obj_t mp_ctx_image(size_t n_args, const mp_obj_t *args) {
-    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);
+  mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);
 
-    const char *path = mp_obj_str_get_str(args[1]);
-    float x0 = 0.0;
-    float y0 = 0.0;
-    float width = -1.0;
-    float height = -1.0;
-    float clip_x = 0.0;
-    float clip_y = 0.0;
-    float clip_width = 0.0;
-    float clip_height = 0.0;
+  const char *path = mp_obj_str_get_str(args[1]);
+  float x0 = 0.0;
+  float y0 = 0.0;
+  float width = -1.0;
+  float height = -1.0;
+  float clip_x = 0.0;
+  float clip_y = 0.0;
+  float clip_width = 0.0;
+  float clip_height = 0.0;
 
-    if (n_args > 2) x0 = mp_obj_get_float(args[2]);
-    if (n_args > 3) y0 = mp_obj_get_float(args[3]);
-    if (n_args > 4) width = mp_obj_get_float(args[4]);
-    if (n_args > 5) height = mp_obj_get_float(args[5]);
-    if (n_args > 6) clip_x = mp_obj_get_float(args[6]);
-    if (n_args > 7) clip_y = mp_obj_get_float(args[7]);
-    if (n_args > 8) clip_width = mp_obj_get_float(args[8]);
-    if (n_args > 9) clip_height = mp_obj_get_float(args[9]);
-    ctx_draw_image_clipped(self->ctx, path, x0, y0, width, height, clip_x,
-                           clip_y, clip_width, clip_height);
+  if (n_args > 2)
+    x0 = mp_obj_get_float(args[2]);
+  if (n_args > 3)
+    y0 = mp_obj_get_float(args[3]);
+  if (n_args > 4)
+    width = mp_obj_get_float(args[4]);
+  if (n_args > 5)
+    height = mp_obj_get_float(args[5]);
+  if (n_args > 6)
+    clip_x = mp_obj_get_float(args[6]);
+  if (n_args > 7)
+    clip_y = mp_obj_get_float(args[7]);
+  if (n_args > 8)
+    clip_width = mp_obj_get_float(args[8]);
+  if (n_args > 9)
+    clip_height = mp_obj_get_float(args[9]);
+  ctx_draw_image_clipped(self->ctx, path, x0, y0, width, height, clip_x, clip_y,
+                         clip_width, clip_height);
 
-    return args[0];
+  return args[0];
 }
 MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_image_obj, 2, 10, mp_ctx_image);
 
@@ -430,67 +474,67 @@ MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_font_obj, mp_ctx_font);
 #endif
 
 static mp_obj_t mp_ctx_get_font_name(mp_obj_t self_in, mp_obj_t no_in) {
-    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    int no = mp_obj_get_int(no_in);
-    const char *name = ctx_get_font_name(self->ctx, no);
-    if (name)
-        return mp_obj_new_str(name, strlen(name));
-    else
-        mp_raise_ValueError("font with given index does not exist");
+  mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  int no = mp_obj_get_int(no_in);
+  const char *name = ctx_get_font_name(self->ctx, no);
+  if (name)
+    return mp_obj_new_str(name, strlen(name));
+  else
+    mp_raise_ValueError(MP_ERROR_TEXT("font with given index does not exist"));
 }
 MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_get_font_name_obj, mp_ctx_get_font_name);
 
 static mp_obj_t mp_ctx_text_width(mp_obj_t self_in, mp_obj_t string_in) {
-    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    const char *string = mp_obj_str_get_str(string_in);
-    return mp_obj_new_float(ctx_text_width(self->ctx, string));
+  mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  const char *string = mp_obj_str_get_str(string_in);
+  return mp_obj_new_float(ctx_text_width(self->ctx, string));
 }
 MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_text_width_obj, mp_ctx_text_width);
 
 static mp_obj_t mp_ctx_add_stop(size_t n_args, const mp_obj_t *args) {
-    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);
-    mp_obj_t color_in = args[2];
+  mp_ctx_obj_t *self = MP_OBJ_TO_PTR(args[0]);
+  mp_obj_t color_in = args[2];
 
-    float pos = (float)mp_obj_get_float(args[1]);
+  float pos = (float)mp_obj_get_float(args[1]);
 
-    float alpha_f = 1.0f;
-    if (n_args == 4) {
-        alpha_f = (float)mp_obj_get_float(args[3]);
-    }
-    if (alpha_f < 0.0f || alpha_f > 1.0f) {
-        mp_raise_ValueError("alpha must be between 0.0 or 1.0");
-    }
+  float alpha_f = 1.0f;
+  if (n_args == 4) {
+    alpha_f = (float)mp_obj_get_float(args[3]);
+  }
+  if (alpha_f < 0.0f || alpha_f > 1.0f) {
+    mp_raise_ValueError(MP_ERROR_TEXT("alpha must be between 0.0 or 1.0"));
+  }
 
-    mp_obj_t red_in, green_in, blue_in;
-    if (mp_obj_get_int(mp_obj_len(color_in)) < 3) {
-        mp_raise_ValueError("color must have 3 elements");
-    }
-    red_in = mp_obj_subscr(color_in, mp_obj_new_int(0), MP_OBJ_SENTINEL);
-    green_in = mp_obj_subscr(color_in, mp_obj_new_int(1), MP_OBJ_SENTINEL);
-    blue_in = mp_obj_subscr(color_in, mp_obj_new_int(2), MP_OBJ_SENTINEL);
+  mp_obj_t red_in, green_in, blue_in;
+  if (mp_obj_get_int(mp_obj_len(color_in)) < 3) {
+    mp_raise_ValueError(MP_ERROR_TEXT("color must have 3 elements"));
+  }
+  red_in = mp_obj_subscr(color_in, mp_obj_new_int(0), MP_OBJ_SENTINEL);
+  green_in = mp_obj_subscr(color_in, mp_obj_new_int(1), MP_OBJ_SENTINEL);
+  blue_in = mp_obj_subscr(color_in, mp_obj_new_int(2), MP_OBJ_SENTINEL);
 
-    /*
-     * The color can be either floats between 0 and 1 or integers between 0
-     * and 255.  Make this decision based on the first element we find.
-     */
-    if (mp_obj_is_type(red_in, &mp_type_float)) {
-        float red, green, blue;
-        red = (float)mp_obj_get_float(red_in);
-        green = (float)mp_obj_get_float(green_in);
-        blue = (float)mp_obj_get_float(blue_in);
+  /*
+   * The color can be either floats between 0 and 1 or integers between 0
+   * and 255.  Make this decision based on the first element we find.
+   */
+  if (mp_obj_is_type(red_in, &mp_type_float)) {
+    float red, green, blue;
+    red = (float)mp_obj_get_float(red_in);
+    green = (float)mp_obj_get_float(green_in);
+    blue = (float)mp_obj_get_float(blue_in);
 
-        ctx_gradient_add_stop(self->ctx, pos, red, green, blue, alpha_f);
-    } else {
-        uint8_t red, green, blue, alpha;
-        red = mp_obj_get_int(red_in);
-        green = mp_obj_get_int(green_in);
-        blue = mp_obj_get_int(blue_in);
+    ctx_gradient_add_stop(self->ctx, pos, red, green, blue, alpha_f);
+  } else {
+    uint8_t red, green, blue, alpha;
+    red = mp_obj_get_int(red_in);
+    green = mp_obj_get_int(green_in);
+    blue = mp_obj_get_int(blue_in);
 
-        alpha = (int)(alpha_f * 255.0f);
-        ctx_gradient_add_stop_u8(self->ctx, pos, red, green, blue, alpha);
-    }
+    alpha = (int)(alpha_f * 255.0f);
+    ctx_gradient_add_stop_u8(self->ctx, pos, red, green, blue, alpha);
+  }
 
-    return args[0];
+  return args[0];
 }
 MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_add_stop_obj, 3, 4, mp_ctx_add_stop);
 
@@ -502,46 +546,58 @@ MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_ctx_add_stop_obj, 3, 4, mp_ctx_add_stop);
 #endif
 
 STATIC void generic_method_lookup(mp_obj_t obj, qstr attr, mp_obj_t *dest) {
-    const mp_obj_type_t *type = mp_obj_get_type(obj);
-    if (MP_OBJ_TYPE_HAS_SLOT(type, locals_dict)) {
-        // generic method lookup
-        // this is a lookup in the object (ie not class or type)
-        // assert(type->locals_dict->base.type == &mp_type_dict); // MicroPython
-        // restriction, for now mp_map_t *locals_map =
-        // &MP_OBJ_TYPE_GET_SLOT(type, locals_dict)->map;
-        mp_map_elem_t *elem =
-            mp_map_lookup(&MP_OBJ_TYPE_GET_SLOT(type, locals_dict)->map,
-                          MP_OBJ_NEW_QSTR(attr), MP_MAP_LOOKUP);
-        if (elem != NULL) {
-            mp_convert_member_lookup(obj, type, elem->value, dest);
-        }
+  const mp_obj_type_t *type = mp_obj_get_type(obj);
+  if (MP_OBJ_TYPE_HAS_SLOT(type, locals_dict)) {
+    // generic method lookup
+    // this is a lookup in the object (ie not class or type)
+    // assert(type->locals_dict->base.type == &mp_type_dict); // MicroPython
+    // restriction, for now mp_map_t *locals_map =
+    // &MP_OBJ_TYPE_GET_SLOT(type, locals_dict)->map;
+    mp_map_elem_t *elem =
+        mp_map_lookup(&MP_OBJ_TYPE_GET_SLOT(type, locals_dict)->map,
+                      MP_OBJ_NEW_QSTR(attr), MP_MAP_LOOKUP);
+    if (elem != NULL) {
+      mp_convert_member_lookup(obj, type, elem->value, dest);
     }
+  }
 }
+
+static mp_obj_t mp_ctx_load_font_ctx(mp_obj_t self_in, mp_obj_t name_in,
+                                     mp_obj_t buffer_in) {
+  mp_buffer_info_t buffer_info;
+  if (!mp_get_buffer(buffer_in, &buffer_info, MP_BUFFER_READ)) {
+    mp_raise_TypeError(MP_ERROR_TEXT("not a buffer"));
+  }
+  const char *name = mp_obj_str_get_str(name_in);
+  ctx_load_font_ctx(name, buffer_info.buf, buffer_info.len);
+  return self_in;
+}
+MP_DEFINE_CONST_FUN_OBJ_3(mp_ctx_load_font_ctx_obj, mp_ctx_load_font_ctx);
 
 #if CTX_TINYVG
 static mp_obj_t mp_ctx_tinyvg_get_size(mp_obj_t self_in, mp_obj_t buffer_in) {
-    mp_buffer_info_t buffer_info;
-    if (!mp_get_buffer(buffer_in, &buffer_info, MP_BUFFER_READ)) {
-        mp_raise_TypeError("not a buffer");
-    }
-    int width = 0, height = 0;
-    ctx_tinyvg_get_size(buffer_info.buf, buffer_info.len, &width, &height);
-    mp_obj_t mp_w = MP_OBJ_NEW_SMALL_INT(width);
-    mp_obj_t mp_h = MP_OBJ_NEW_SMALL_INT(height);
-    mp_obj_t tup[] = { mp_w, mp_h };
-    return mp_obj_new_tuple(2, tup);
+  mp_buffer_info_t buffer_info;
+  if (!mp_get_buffer(buffer_in, &buffer_info, MP_BUFFER_READ)) {
+    mp_raise_TypeError(MP_ERROR_TEXT("not a buffer"));
+  }
+  int width = 0, height = 0;
+  ctx_tinyvg_get_size(buffer_info.buf, buffer_info.len, &width, &height);
+  mp_obj_t mp_w = MP_OBJ_NEW_SMALL_INT(width);
+  mp_obj_t mp_h = MP_OBJ_NEW_SMALL_INT(height);
+  mp_obj_t tup[] = {mp_w, mp_h};
+  return mp_obj_new_tuple(2, tup);
 }
 MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_tinyvg_get_size_obj, mp_ctx_tinyvg_get_size);
 
 static mp_obj_t mp_ctx_tinyvg_draw(mp_obj_t self_in, mp_obj_t buffer_in) {
-    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    mp_buffer_info_t buffer_info;
+  mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  mp_buffer_info_t buffer_info;
 
-    if (!mp_get_buffer(buffer_in, &buffer_info, MP_BUFFER_READ)) {
-        mp_raise_TypeError("not a buffer");
-    }
-    ctx_tinyvg_draw(self->ctx, buffer_info.buf, buffer_info.len, 0);
-    return self_in;
+  if (!mp_get_buffer(buffer_in, &buffer_info, MP_BUFFER_READ)) {
+    mp_raise_TypeError(MP_ERROR_TEXT("not a buffer"));
+  }
+  ctx_tinyvg_draw(self->ctx, buffer_info.buf, buffer_info.len, 0);
+  return self_in;
 }
 MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_tinyvg_draw_obj, mp_ctx_tinyvg_draw);
 #endif
@@ -549,257 +605,253 @@ MP_DEFINE_CONST_FUN_OBJ_2(mp_ctx_tinyvg_draw_obj, mp_ctx_tinyvg_draw);
 
 static void mp_ctx_set_pixels(Ctx *ctx, void *user_data, int x_in, int y_in,
                               int width_in, int height_in, void *buf_in) {
-    int buf_size = width_in * height_in * 2;  // XXX : not valid for non-16bpp!
-    mp_obj_t args[5] = { mp_obj_new_int(x_in), mp_obj_new_int(y_in),
-                         mp_obj_new_int(width_in), mp_obj_new_int(height_in),
-                         mp_obj_new_memoryview(BYTEARRAY_TYPECODE, buf_size,
-                                               buf_in) };
-    mp_call_function_n_kw(user_data, 5, 0, args);
+  int buf_size = width_in * height_in * 2; // XXX : not valid for non-16bpp!
+  mp_obj_t args[5] = {
+      mp_obj_new_int(x_in), mp_obj_new_int(y_in), mp_obj_new_int(width_in),
+      mp_obj_new_int(height_in),
+      mp_obj_new_memoryview(BYTEARRAY_TYPECODE, buf_size, buf_in)};
+  mp_call_function_n_kw(user_data, 5, 0, args);
 }
 
 static int mp_ctx_update_fb(Ctx *ctx, void *user_data) {
-    mp_obj_t ret = mp_call_function_0(user_data);
-    if (mp_obj_is_true(ret)) return 1;
-    return 0;
+  mp_obj_t ret = mp_call_function_0(user_data);
+  if (mp_obj_is_true(ret))
+    return 1;
+  return 0;
 }
 
 mp_obj_t mp_ctx_from_ctx(Ctx *ctx) {
-    mp_ctx_obj_t *o = m_new_obj(mp_ctx_obj_t);
-    o->base.type = &mp_ctx_type;
-    o->ctx = ctx;
-    return MP_OBJ_FROM_PTR(o);
+  mp_ctx_obj_t *o = m_new_obj(mp_ctx_obj_t);
+  o->base.type = &mp_ctx_type;
+  o->ctx = ctx;
+  o->a11y = mp_const_none;
+  return MP_OBJ_FROM_PTR(o);
 }
 
 static mp_obj_t mp_ctx_make_new(const mp_obj_type_t *type, size_t n_args,
                                 size_t n_kw, const mp_obj_t *all_args) {
-    mp_ctx_obj_t *o = m_new_obj(mp_ctx_obj_t);
-    o->base.type = type;
-    enum {
-        ARG_width,
-        ARG_height,
-        ARG_stride,
-        ARG_format,
-        ARG_buffer,
-        ARG_memory_budget,
-        ARG_flags,
-        ARG_set_pixels,
-        ARG_update,
-        ARG_userdata
-    };
-    static const mp_arg_t allowed_args[] = {
-        { MP_QSTR_width, MP_ARG_KW_ONLY | MP_ARG_INT, { .u_int = 0 } },
-        { MP_QSTR_height, MP_ARG_KW_ONLY | MP_ARG_INT, { .u_int = 0 } },
-        { MP_QSTR_stride, MP_ARG_KW_ONLY | MP_ARG_INT, { .u_int = 0 } },
-        { MP_QSTR_format, MP_ARG_KW_ONLY | MP_ARG_INT, { .u_int = 0 } },
-        { MP_QSTR_buffer,
-          MP_ARG_KW_ONLY | MP_ARG_OBJ,
-          { .u_obj = MP_OBJ_NULL } },
-        { MP_QSTR_memory_budget,
-          MP_ARG_KW_ONLY | MP_ARG_INT,
-          { .u_int = 24 * 1024 } },
-        { MP_QSTR_flags, MP_ARG_KW_ONLY | MP_ARG_INT, { .u_int = 0 } },
-        { MP_QSTR_set_pixels,
-          MP_ARG_KW_ONLY | MP_ARG_OBJ,
-          { .u_obj = MP_OBJ_NULL } },
-        { MP_QSTR_update,
-          MP_ARG_KW_ONLY | MP_ARG_OBJ,
-          { .u_obj = MP_OBJ_NULL } },
-        { MP_QSTR_userdata,
-          MP_ARG_KW_ONLY | MP_ARG_OBJ,
-          { .u_obj = MP_OBJ_NULL } },
-    };
-    mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
-    mp_arg_parse_all_kw_array(n_args, n_kw, all_args,
-                              MP_ARRAY_SIZE(allowed_args), allowed_args, args);
-    int format = args[ARG_format].u_int;
-    int width = args[ARG_width].u_int;
-    int height = args[ARG_height].u_int;
-    int stride = args[ARG_stride].u_int;
-    int memory_budget = args[ARG_memory_budget].u_int;
-    int flags = args[ARG_flags].u_int;
-    if (args[ARG_set_pixels].u_obj != MP_OBJ_NULL) {
-        mp_obj_t set_pixels_in = args[ARG_set_pixels].u_obj;
-        mp_obj_t update_fb_in = args[ARG_update].u_obj;
+  mp_ctx_obj_t *o = m_new_obj(mp_ctx_obj_t);
+  o->base.type = type;
+  o->a11y = mp_const_none;
+  enum {
+    ARG_width,
+    ARG_height,
+    ARG_stride,
+    ARG_format,
+    ARG_buffer,
+    ARG_memory_budget,
+    ARG_flags,
+    ARG_set_pixels,
+    ARG_update,
+    ARG_userdata
+  };
+  static const mp_arg_t allowed_args[] = {
+      {MP_QSTR_width, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 0}},
+      {MP_QSTR_height, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 0}},
+      {MP_QSTR_stride, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 0}},
+      {MP_QSTR_format, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 0}},
+      {MP_QSTR_buffer, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = MP_OBJ_NULL}},
+      {MP_QSTR_memory_budget,
+       MP_ARG_KW_ONLY | MP_ARG_INT,
+       {.u_int = 24 * 1024}},
+      {MP_QSTR_flags, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 0}},
+      {MP_QSTR_set_pixels, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = MP_OBJ_NULL}},
+      {MP_QSTR_update, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = MP_OBJ_NULL}},
+      {MP_QSTR_userdata, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = MP_OBJ_NULL}},
+  };
+  mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
+  mp_arg_parse_all_kw_array(n_args, n_kw, all_args, MP_ARRAY_SIZE(allowed_args),
+                            allowed_args, args);
+  int format = args[ARG_format].u_int;
+  int width = args[ARG_width].u_int;
+  int height = args[ARG_height].u_int;
+  int stride = args[ARG_stride].u_int;
+  int memory_budget = args[ARG_memory_budget].u_int;
+  int flags = args[ARG_flags].u_int;
+  if (args[ARG_set_pixels].u_obj != MP_OBJ_NULL) {
+    mp_obj_t set_pixels_in = args[ARG_set_pixels].u_obj;
+    mp_obj_t update_fb_in = args[ARG_update].u_obj;
 
-        if (update_fb_in != mp_const_none && !mp_obj_is_callable(update_fb_in))
-            mp_raise_ValueError(MP_ERROR_TEXT("invalid update_fb handler"));
+    if (update_fb_in != mp_const_none && !mp_obj_is_callable(update_fb_in))
+      mp_raise_ValueError(MP_ERROR_TEXT("invalid update_fb handler"));
 
-        if (set_pixels_in != mp_const_none &&
-            !mp_obj_is_callable(set_pixels_in))
-            mp_raise_ValueError(MP_ERROR_TEXT("invalid set_pixels handler"));
+    if (set_pixels_in != mp_const_none && !mp_obj_is_callable(set_pixels_in))
+      mp_raise_ValueError(MP_ERROR_TEXT("invalid set_pixels handler"));
 
-        o->ctx =
-            ctx_new_cb(width, height, format, mp_ctx_set_pixels, set_pixels_in,
-                       update_fb_in != mp_const_none ? mp_ctx_update_fb : NULL,
-                       update_fb_in, memory_budget, NULL, flags);
-        return MP_OBJ_FROM_PTR(o);
-    }
-    if (args[ARG_buffer].u_obj != MP_OBJ_NULL) {
-        mp_buffer_info_t buffer_info;
-
-        if (!mp_get_buffer(args[ARG_buffer].u_obj, &buffer_info,
-                           MP_BUFFER_READ)) {
-            mp_raise_TypeError("not a buffer");
-        }
-        o->ctx = ctx_new_for_framebuffer(buffer_info.buf, width, height, stride,
-                                         format);
-        return MP_OBJ_FROM_PTR(o);
-    }
-#ifdef EMSCRIPTEN
-    o->ctx = ctx_wasm_get_context(memory_budget);
-#else
-    o->ctx = ctx_new(width, height, NULL);
-#endif
+    o->ctx = ctx_new_cb(width, height, format, mp_ctx_set_pixels, set_pixels_in,
+                        update_fb_in != mp_const_none ? mp_ctx_update_fb : NULL,
+                        update_fb_in, memory_budget, NULL, flags);
     return MP_OBJ_FROM_PTR(o);
+  }
+  if (args[ARG_buffer].u_obj != MP_OBJ_NULL) {
+    mp_buffer_info_t buffer_info;
+
+    if (!mp_get_buffer(args[ARG_buffer].u_obj, &buffer_info, MP_BUFFER_READ)) {
+      mp_raise_TypeError(MP_ERROR_TEXT("not a buffer"));
+    }
+    o->ctx =
+        ctx_new_for_framebuffer(buffer_info.buf, width, height, stride, format);
+    return MP_OBJ_FROM_PTR(o);
+  }
+#ifdef EMSCRIPTEN
+  o->ctx = ctx_host();
+#else
+  o->ctx = ctx_new(width, height, NULL);
+#endif
+  return MP_OBJ_FROM_PTR(o);
 }
 
 STATIC mp_obj_t mp_ctx_attr_op(mp_obj_t self_in, qstr attr, mp_obj_t set_val) {
-    mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    if (set_val == MP_OBJ_NULL) {
-        switch (attr) {
-            case MP_QSTR_font: {
-                const char *font = ctx_get_font(self->ctx);
-                return mp_obj_new_str(font, strlen(font));
-            }
-            case MP_QSTR_image_smoothing:
-                return mp_obj_new_int(ctx_get_image_smoothing(self->ctx));
-            case MP_QSTR_fill_rule:
-                return mp_obj_new_int(ctx_get_fill_rule(self->ctx));
-#if CTX_BLENDING_AND_COMPOSITING
-            case MP_QSTR_blend_mode:
-                return mp_obj_new_int(ctx_get_blend_mode(self->ctx));
-            case MP_QSTR_compositing_mode:
-                return mp_obj_new_int(ctx_get_compositing_mode(self->ctx));
-#endif
-            case MP_QSTR_flags:
-                return mp_obj_new_int(ctx_cb_get_flags(self->ctx));
-
-            case MP_QSTR_line_cap:
-                return mp_obj_new_int(ctx_get_line_cap(self->ctx));
-            case MP_QSTR_line_join:
-                return mp_obj_new_int(ctx_get_line_join(self->ctx));
-            case MP_QSTR_text_align:
-                return mp_obj_new_int(ctx_get_text_align(self->ctx));
-            case MP_QSTR_text_baseline:
-                return mp_obj_new_int(ctx_get_text_baseline(self->ctx));
-            case MP_QSTR_font_size:
-                return mp_obj_new_float(ctx_get_font_size(self->ctx));
-            case MP_QSTR_line_width:
-                return mp_obj_new_float(ctx_get_line_width(self->ctx));
-            case MP_QSTR_line_dash_offset:
-                return mp_obj_new_float(ctx_get_line_dash_offset(self->ctx));
-            case MP_QSTR_line_height:
-                return mp_obj_new_float(ctx_get_line_height(self->ctx));
-            case MP_QSTR_wrap_left:
-                return mp_obj_new_float(ctx_get_wrap_left(self->ctx));
-            case MP_QSTR_wrap_right:
-                return mp_obj_new_float(ctx_get_wrap_right(self->ctx));
-            case MP_QSTR_miter_limit:
-                return mp_obj_new_float(ctx_get_miter_limit(self->ctx));
-            case MP_QSTR_global_alpha:
-                return mp_obj_new_float(ctx_get_global_alpha(self->ctx));
-            case MP_QSTR_width:
-                return mp_obj_new_int(ctx_width(self->ctx));
-            case MP_QSTR_height:
-                return mp_obj_new_int(ctx_height(self->ctx));
-            case MP_QSTR_x:
-                return mp_obj_new_float(ctx_x(self->ctx));
-            case MP_QSTR_y:
-                return mp_obj_new_float(ctx_y(self->ctx));
-        }
-    } else {
-        switch (attr) {
-            case MP_QSTR_font:
-                ctx_font(self->ctx, mp_obj_str_get_str(set_val));
-                break;
-            case MP_QSTR_image_smoothing:
-                ctx_image_smoothing(self->ctx, mp_obj_get_int(set_val));
-                break;
-            case MP_QSTR_fill_rule:
-                ctx_fill_rule(self->ctx, mp_obj_get_int(set_val));
-                break;
-            case MP_QSTR_line_cap:
-                ctx_line_cap(self->ctx, mp_obj_get_int(set_val));
-                break;
-            case MP_QSTR_flags:
-                ctx_cb_set_flags(self->ctx, mp_obj_get_int(set_val));
-                break;
-            case MP_QSTR_line_join:
-                ctx_line_join(self->ctx, mp_obj_get_int(set_val));
-                break;
-            case MP_QSTR_text_align:
-                ctx_text_align(self->ctx, mp_obj_get_int(set_val));
-                break;
-#if CTX_BLENDING_AND_COMPOSITING
-            case MP_QSTR_blend_mode:
-                ctx_blend_mode(self->ctx, mp_obj_get_int(set_val));
-                break;
-            case MP_QSTR_compositing_mode:
-                ctx_compositing_mode(self->ctx, mp_obj_get_int(set_val));
-                break;
-#endif
-            case MP_QSTR_text_baseline:
-                ctx_text_baseline(self->ctx, mp_obj_get_int(set_val));
-                break;
-            case MP_QSTR_line_width:
-                ctx_line_width(self->ctx, (float)mp_obj_get_float(set_val));
-                break;
-            case MP_QSTR_line_height:
-                ctx_line_height(self->ctx, (float)mp_obj_get_float(set_val));
-                break;
-            case MP_QSTR_wrap_left:
-                ctx_wrap_left(self->ctx, (float)mp_obj_get_float(set_val));
-                break;
-            case MP_QSTR_wrap_right:
-                ctx_wrap_right(self->ctx, (float)mp_obj_get_float(set_val));
-                break;
-
-            case MP_QSTR_line_dash_offset:
-                ctx_line_dash_offset(self->ctx,
-                                     (float)mp_obj_get_float(set_val));
-                break;
-            case MP_QSTR_miter_limit:
-                ctx_miter_limit(self->ctx, (float)mp_obj_get_float(set_val));
-                break;
-            case MP_QSTR_global_alpha:
-                ctx_global_alpha(self->ctx, (float)mp_obj_get_float(set_val));
-                break;
-            case MP_QSTR_font_size:
-                ctx_font_size(self->ctx, (float)mp_obj_get_float(set_val));
-                break;
-        }
-        return set_val;
+  mp_ctx_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  if (set_val == MP_OBJ_NULL) {
+    switch (attr) {
+    case MP_QSTR_font: {
+      const char *font = ctx_get_font(self->ctx);
+      return mp_obj_new_str(font, strlen(font));
     }
-    return self_in;
+    case MP_QSTR_image_smoothing:
+      return mp_obj_new_int(ctx_get_image_smoothing(self->ctx));
+    case MP_QSTR_fill_rule:
+      return mp_obj_new_int(ctx_get_fill_rule(self->ctx));
+#if CTX_BLENDING_AND_COMPOSITING
+    case MP_QSTR_blend_mode:
+      return mp_obj_new_int(ctx_get_blend_mode(self->ctx));
+    case MP_QSTR_compositing_mode:
+      return mp_obj_new_int(ctx_get_compositing_mode(self->ctx));
+#endif
+    case MP_QSTR_flags:
+      return mp_obj_new_int(ctx_cb_get_flags(self->ctx));
+
+    case MP_QSTR_line_cap:
+      return mp_obj_new_int(ctx_get_line_cap(self->ctx));
+    case MP_QSTR_line_join:
+      return mp_obj_new_int(ctx_get_line_join(self->ctx));
+    case MP_QSTR_text_align:
+      return mp_obj_new_int(ctx_get_text_align(self->ctx));
+    case MP_QSTR_text_baseline:
+      return mp_obj_new_int(ctx_get_text_baseline(self->ctx));
+    case MP_QSTR_font_size:
+      return mp_obj_new_float(ctx_get_font_size(self->ctx));
+    case MP_QSTR_line_width:
+      return mp_obj_new_float(ctx_get_line_width(self->ctx));
+    case MP_QSTR_line_dash_offset:
+      return mp_obj_new_float(ctx_get_line_dash_offset(self->ctx));
+    case MP_QSTR_line_height:
+      return mp_obj_new_float(ctx_get_line_height(self->ctx));
+    case MP_QSTR_wrap_left:
+      return mp_obj_new_float(ctx_get_wrap_left(self->ctx));
+    case MP_QSTR_wrap_right:
+      return mp_obj_new_float(ctx_get_wrap_right(self->ctx));
+    case MP_QSTR_miter_limit:
+      return mp_obj_new_float(ctx_get_miter_limit(self->ctx));
+    case MP_QSTR_global_alpha:
+      return mp_obj_new_float(ctx_get_global_alpha(self->ctx));
+    case MP_QSTR_width:
+      return mp_obj_new_int(ctx_width(self->ctx));
+    case MP_QSTR_height:
+      return mp_obj_new_int(ctx_height(self->ctx));
+    case MP_QSTR_x:
+      return mp_obj_new_float(ctx_x(self->ctx));
+    case MP_QSTR_y:
+      return mp_obj_new_float(ctx_y(self->ctx));
+    case MP_QSTR_a11y:
+      return self->a11y;
+    }
+  } else {
+    switch (attr) {
+    case MP_QSTR_font:
+      ctx_font(self->ctx, mp_obj_str_get_str(set_val));
+      break;
+    case MP_QSTR_image_smoothing:
+      ctx_image_smoothing(self->ctx, mp_obj_get_int(set_val));
+      break;
+    case MP_QSTR_fill_rule:
+      ctx_fill_rule(self->ctx, mp_obj_get_int(set_val));
+      break;
+    case MP_QSTR_line_cap:
+      ctx_line_cap(self->ctx, mp_obj_get_int(set_val));
+      break;
+    case MP_QSTR_flags:
+      ctx_cb_set_flags(self->ctx, mp_obj_get_int(set_val));
+      break;
+    case MP_QSTR_line_join:
+      ctx_line_join(self->ctx, mp_obj_get_int(set_val));
+      break;
+    case MP_QSTR_text_align:
+      ctx_text_align(self->ctx, mp_obj_get_int(set_val));
+      break;
+#if CTX_BLENDING_AND_COMPOSITING
+    case MP_QSTR_blend_mode:
+      ctx_blend_mode(self->ctx, mp_obj_get_int(set_val));
+      break;
+    case MP_QSTR_compositing_mode:
+      ctx_compositing_mode(self->ctx, mp_obj_get_int(set_val));
+      break;
+#endif
+    case MP_QSTR_text_baseline:
+      ctx_text_baseline(self->ctx, mp_obj_get_int(set_val));
+      break;
+    case MP_QSTR_line_width:
+      ctx_line_width(self->ctx, (float)mp_obj_get_float(set_val));
+      break;
+    case MP_QSTR_line_height:
+      ctx_line_height(self->ctx, (float)mp_obj_get_float(set_val));
+      break;
+    case MP_QSTR_wrap_left:
+      ctx_wrap_left(self->ctx, (float)mp_obj_get_float(set_val));
+      break;
+    case MP_QSTR_wrap_right:
+      ctx_wrap_right(self->ctx, (float)mp_obj_get_float(set_val));
+      break;
+
+    case MP_QSTR_line_dash_offset:
+      ctx_line_dash_offset(self->ctx, (float)mp_obj_get_float(set_val));
+      break;
+    case MP_QSTR_miter_limit:
+      ctx_miter_limit(self->ctx, (float)mp_obj_get_float(set_val));
+      break;
+    case MP_QSTR_global_alpha:
+      ctx_global_alpha(self->ctx, (float)mp_obj_get_float(set_val));
+      break;
+    case MP_QSTR_font_size:
+      ctx_font_size(self->ctx, (float)mp_obj_get_float(set_val));
+      break;
+    case MP_QSTR_a11y:
+      self->a11y = set_val;
+      break;
+    }
+    return set_val;
+  }
+  return self_in;
 }
 
 STATIC void mp_ctx_attr(mp_obj_t obj, qstr attr, mp_obj_t *dest) {
-    if (attr == MP_QSTR_width || attr == MP_QSTR_height || attr == MP_QSTR_font
+  if (attr == MP_QSTR_width || attr == MP_QSTR_height || attr == MP_QSTR_font
 #if CTX_BLENDING_AND_COMPOSITING
-        || attr == MP_QSTR_blend_mode || attr == MP_QSTR_compositing_mode
+      || attr == MP_QSTR_blend_mode || attr == MP_QSTR_compositing_mode
 #endif
-        || attr == MP_QSTR_flags || attr == MP_QSTR_line_cap ||
-        attr == MP_QSTR_line_join || attr == MP_QSTR_text_align ||
-        attr == MP_QSTR_fill_rule || attr == MP_QSTR_image_smoothing ||
-        attr == MP_QSTR_text_baseline || attr == MP_QSTR_line_width ||
-        attr == MP_QSTR_line_dash_offset || attr == MP_QSTR_line_height ||
-        attr == MP_QSTR_wrap_left || attr == MP_QSTR_wrap_right ||
-        attr == MP_QSTR_miter_limit || attr == MP_QSTR_global_alpha ||
-        attr == MP_QSTR_font_size || attr == MP_QSTR_font ||
-        attr == MP_QSTR_x || attr == MP_QSTR_y) {
-        if (dest[0] == MP_OBJ_NULL) {
-            // load attribute
-            mp_obj_t val = mp_ctx_attr_op(obj, attr, MP_OBJ_NULL);
-            dest[0] = val;
-        } else {
-            // delete/store attribute
-            if (mp_ctx_attr_op(obj, attr, dest[1]) != MP_OBJ_NULL)
-                dest[0] = MP_OBJ_NULL;  // indicate success
-        }
+      || attr == MP_QSTR_flags || attr == MP_QSTR_line_cap ||
+      attr == MP_QSTR_line_join || attr == MP_QSTR_text_align ||
+      attr == MP_QSTR_fill_rule || attr == MP_QSTR_image_smoothing ||
+      attr == MP_QSTR_text_baseline || attr == MP_QSTR_line_width ||
+      attr == MP_QSTR_line_dash_offset || attr == MP_QSTR_line_height ||
+      attr == MP_QSTR_wrap_left || attr == MP_QSTR_wrap_right ||
+      attr == MP_QSTR_miter_limit || attr == MP_QSTR_global_alpha ||
+      attr == MP_QSTR_font_size || attr == MP_QSTR_font || attr == MP_QSTR_x ||
+      attr == MP_QSTR_y || attr == MP_QSTR_a11y) {
+    if (dest[0] == MP_OBJ_NULL) {
+      // load attribute
+      mp_obj_t val = mp_ctx_attr_op(obj, attr, MP_OBJ_NULL);
+      dest[0] = val;
     } else {
-        // A method call
-        generic_method_lookup(obj, attr, dest);
+      // delete/store attribute
+      if (mp_ctx_attr_op(obj, attr, dest[1]) != MP_OBJ_NULL)
+        dest[0] = MP_OBJ_NULL; // indicate success
     }
+  } else {
+    // A method call
+    generic_method_lookup(obj, attr, dest);
+  }
 }
 
 /* CTX class/type */
@@ -840,8 +892,8 @@ static const mp_rom_map_elem_t mp_ctx_locals_dict_table[] = {
     MP_CTX_METHOD(start_group),
     MP_CTX_METHOD(end_group),
 #else
-    { MP_ROM_QSTR(MP_QSTR_start_group), MP_ROM_PTR(&mp_ctx_save_obj) },
-    { MP_ROM_QSTR(MP_QSTR_end_group), MP_ROM_PTR(&mp_ctx_restore_obj) },
+    {MP_ROM_QSTR(MP_QSTR_start_group), MP_ROM_PTR(&mp_ctx_save_obj)},
+    {MP_ROM_QSTR(MP_QSTR_end_group), MP_ROM_PTR(&mp_ctx_restore_obj)},
 #endif
     MP_CTX_METHOD(preserve),
     MP_CTX_METHOD(linear_gradient),
@@ -854,6 +906,7 @@ static const mp_rom_map_elem_t mp_ctx_locals_dict_table[] = {
     MP_CTX_METHOD(start_frame),
     MP_CTX_METHOD(end_frame),
     MP_CTX_METHOD(get_font_name),
+    MP_CTX_METHOD(load_font_ctx),
 
 #if CTX_PARSER
     MP_CTX_METHOD(parse),
@@ -1013,8 +1066,8 @@ const mp_obj_type_t mp_ctx_type = {
 
 /* The globals table for this module */
 static const mp_rom_map_elem_t mp_ctx_module_globals_table[] = {
-    { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_ctx_module) },
-    { MP_ROM_QSTR(MP_QSTR_Context), MP_ROM_PTR(&mp_ctx_type) },
+    {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_ctx_module)},
+    {MP_ROM_QSTR(MP_QSTR_Context), MP_ROM_PTR(&mp_ctx_type)},
 
     MP_CTX_INT_CONSTANT(FORMAT, GRAY8),
     MP_CTX_INT_CONSTANT(FORMAT, GRAYA8),
@@ -1050,43 +1103,36 @@ static const mp_rom_map_elem_t mp_ctx_module_globals_table[] = {
 static MP_DEFINE_CONST_DICT(mp_ctx_module_globals, mp_ctx_module_globals_table);
 
 const mp_obj_module_t mp_module_ctx = {
-    .base = { &mp_type_module },
+    .base = {&mp_type_module},
     .globals = (mp_obj_dict_t *)&mp_ctx_module_globals,
 };
 
-
-#include "py/stream.h"
 #include "extmod/vfs.h"
+#include "py/stream.h"
 
-int mp_ctx_vfs_load_file (const char     *path,
-                          unsigned char **contents,
-                          long           *length,
-                          long            max_length)
-{
+int mp_ctx_vfs_load_file(const char *path, unsigned char **contents,
+                         long *length, long max_length) {
   mp_obj_t filename = mp_obj_new_str(path, strlen(path));
-  mp_obj_t open_args[2] = {filename,
-                           MP_OBJ_NEW_QSTR(MP_QSTR_rb)};
+  mp_obj_t open_args[2] = {filename, MP_OBJ_NEW_QSTR(MP_QSTR_rb)};
   mp_obj_t stat = mp_vfs_stat(filename);
   mp_obj_tuple_t *l = MP_OBJ_TO_PTR(stat);
   mp_obj_t file = mp_vfs_open(MP_ARRAY_SIZE(open_args), &open_args[0],
-		              (mp_map_t*)&mp_const_empty_map);
+                              (mp_map_t *)&mp_const_empty_map);
   const mp_stream_p_t *stream_p = mp_get_stream(file);
-  if (!stream_p)
-  {
-    mp_stream_close (file);
+  if (!stream_p) {
+    mp_stream_close(file);
     return -1;
   }
-  int   errcode = 0;
+  int errcode = 0;
 
   long len = mp_obj_get_int(l->items[6]);
   if (len > max_length) {
-    mp_stream_close (file);
+    mp_stream_close(file);
     return -1;
   }
-  unsigned char *buf = ctx_malloc (len);
-  if (!buf)
-  {
-    mp_stream_close (file);
+  unsigned char *buf = ctx_malloc(len);
+  if (!buf) {
+    mp_stream_close(file);
     return -1;
   }
   mp_stream_rw(file, buf, len, &errcode, MP_STREAM_RW_READ | MP_STREAM_RW_ONCE);
@@ -1095,10 +1141,9 @@ int mp_ctx_vfs_load_file (const char     *path,
   }
   *contents = buf;
   *length = len;
-  mp_stream_close (file);
+  mp_stream_close(file);
   return 0;
 }
-
 
 /* This is a special macro that will make MicroPython aware of this module */
 /* clang-format off */

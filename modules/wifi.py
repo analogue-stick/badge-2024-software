@@ -9,7 +9,7 @@ _AP_IF = network.WLAN(network.AP_IF)
 
 DEFAULT_CONNECT_TIMEOUT = 20
 DEFAULT_TX_POWER = 80
-DEFAULT_SSID = "emf2024"
+DEFAULT_SSID = "emf"
 DEFAULT_USERNAME = "badge"
 DEFAULT_PASSWORD = "badge"
 
@@ -167,7 +167,7 @@ async def async_wait(duration=None):
         if t <= 0:
             break
         t -= 1
-        asyncio.sleep(1)
+        await asyncio.sleep(1)
     return status()
 
 

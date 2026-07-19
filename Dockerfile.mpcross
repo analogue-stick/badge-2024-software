@@ -1,0 +1,4 @@
+FROM ubuntu:25.10
+
+COPY micropython/mpy-cross /mpy-cross
+ENTRYPOINT ["/mpy-cross/build/mpy-cross"]

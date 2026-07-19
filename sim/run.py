@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
 
+import argparse
+import builtins
 import importlib
 import importlib.abc
 import importlib.machinery
-from importlib.machinery import PathFinder, BuiltinImporter
 import importlib.util
 import os
 import sys
-import builtins
-import argparse
 import traceback
-import os
-
+from importlib.machinery import BuiltinImporter, PathFinder
 
 projectpath = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
-import random
-import pygame
 import cmath
 import gzip
-import wasmer
-import wasmer_compiler_cranelift
+import random
+
+import pygame
 
 try:
     import config
@@ -71,7 +68,7 @@ sys.path = [
 builtin = BuiltinImporter()
 pathfinder = PathFinder()
 underscore = UnderscoreFinder(builtin, pathfinder)
-sys.meta_path = [pathfinder, underscore]
+sys.meta_path = [pathfinder, underscore, builtin]
 
 # Clean up whatever might have already been imported as `time`.
 import time
@@ -89,6 +86,11 @@ try:
     os.mkdir(simpath)
 except:
     pass
+
+
+import settings
+settings._PATH = os.path.join(projectpath, "settings.json")
+
 
 
 def _path_replace(p):
@@ -129,7 +131,11 @@ def _mkmock2(fun):
 os.listdir = _mkmock(os.listdir)
 os.rename = _mkmock2(os.rename)
 os.stat = _mkmock(os.stat)
-os.statvfs = _mkmock(os.statvfs)
+if hasattr(os, "statvfs"):
+    os.statvfs = _mkmock(os.statvfs)
+else:
+    # We seem to be on Windows, mock out plausible filesystem:
+    os.statvfs = lambda path: (4096, 4096, 4096, 2048, 2048, 0, 0, 0, 0, 255)
 os.mkdir = _mkmock(os.mkdir)
 os.rmdir = _mkmock(os.rmdir)
 os.unlink = _mkmock(os.unlink)
@@ -146,7 +152,22 @@ def mkstat(orig_stat):
 os.stat = mkstat(os.stat)
 
 
-sys.print_exception = lambda x: print(traceback.format_exc())
+sys.print_exception = lambda *_: print(traceback.format_exc())
+
+
+def replace_launcher(module_name: str, class_name: str):
+    try:
+        app_module = importlib.import_module(module_name)
+    except ImportError:
+        raise Exception(f"Module '{module_name}' not found.")
+
+    try:
+        app_class = getattr(app_module, class_name)
+    except AttributeError:
+        raise Exception(f"Class '{class_name}' not found in module '{module_name}'.")
+
+    import system.launcher.app
+    system.launcher.app.Launcher = app_class
 
 
 def sim_main():
@@ -155,19 +176,31 @@ def sim_main():
         "--screenshot",
         action="store_true",
         default=False,
-        help="Generate a flow3r.png screenshot.",
+        help="Generate a screenshot.",
     )
     parser.add_argument(
         "override_app",
         nargs="?",
-        help="Bundle to start instead of the main menu. "
-        + "This is the `app.name` from flow3r.toml.",
+        help="App to start instead of the main launcher. "
+        + "This is in the format 'module.class', for example 'example.ExampleApp'.",
     )
     args = parser.parse_args()
 
     import _sim
 
     _sim.SCREENSHOT = args.screenshot
+
+    if args.override_app is not None:
+        parts = args.override_app.split(".")
+        if len(parts) != 2:
+            print("Error: override_app argument must be in the format `module.class`")
+            sys.exit(1)
+
+        try:
+            replace_launcher(parts[0], parts[1])
+        except Exception as ex:
+            print(f"Error: {ex}")
+            sys.exit(1)
 
     import main
 

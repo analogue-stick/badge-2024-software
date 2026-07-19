@@ -44,18 +44,25 @@ class Notification:
 
     def get_text_for_line(self, ctx, text, line):
         width_for_line = 240
-        if line < (len(self.width_limits)):
+        if line < len(self.width_limits):
             width_for_line = self.width_limits[line]
 
-        extra_text = ""
-        text_that_fits = text
-        text_width = ctx.text_width(text_that_fits)
-        while text_width > width_for_line:
-            character = text_that_fits[-1]
-            text_that_fits = text_that_fits[:-1]
-            extra_text = character + extra_text
-            text_width = ctx.text_width(text_that_fits)
-        return text_that_fits, extra_text
+        if ctx.text_width(text) <= width_for_line:
+            return text.strip(), ""
+
+        split = None
+        for i in range(1, len(text) + 1):
+            if ctx.text_width(text[:i]) > width_for_line:
+                # If there are no spaces, just hard break
+                if split is None:
+                    split = i
+                break
+
+            # Attempt to break on a word boundary
+            if i < len(text) and text[i] == " ":
+                split = i
+
+        return text[:split].strip(), text[split:].strip()
 
     def draw(self, ctx):
         if not self._is_closed():
@@ -71,6 +78,8 @@ class Notification:
             lines = []
             extra_text = self.message
             line = 0
+            if ctx.a11y:
+                ctx.a11y.add_alt(None, "Notification: " + self.message, transient=True)
             while extra_text:
                 text_that_fits, extra_text = self.get_text_for_line(
                     ctx, extra_text, line
@@ -78,7 +87,7 @@ class Notification:
                 lines.append(text_that_fits)
                 line = line + 1
 
-            set_color(ctx, "mid_green")
+            set_color(ctx, "notification")
             ctx.rectangle(
                 -120,
                 -150
@@ -88,7 +97,7 @@ class Notification:
                 30 * len(lines),
             ).fill()
 
-            set_color(ctx, "label")
+            set_color(ctx, "notification_text")
             for i in range(len(lines)):
                 ctx.move_to(
                     0,

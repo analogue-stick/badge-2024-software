@@ -22,7 +22,6 @@ typedef struct
 {
     tildagon_mux_i2c_obj_t* mux_port;
     uint8_t cc_select;
-    uint16_t input_current_limit;
     uint16_t status;
     uint16_t statusa;
     uint8_t host;
@@ -48,6 +47,18 @@ extern void fusb_setup_host( fusb_state_t* state );
  * @param cc_select the pin to measure on
  */
 extern void fusb_set_cc( fusb_state_t* state, uint8_t cc_select );
+/**
+ * @brief turn on Vcon
+ * @param state the port object
+ * @param cc_vcon which cc line to use as Vcon
+ */
+extern void fusb_set_vcon(fusb_state_t* state, uint8_t cc_vcon );
+/**
+ * @brief turn on/off the pull downs on CC lines 
+ * @param state the port object
+ * @param pull bitfield of enables
+ */
+extern void fusb_set_pulldown(fusb_state_t* state, uint8_t pull );
 /**
  * @brief disable toggle
  * @param state the port object

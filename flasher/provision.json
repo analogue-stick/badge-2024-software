@@ -1,0 +1,15 @@
+{
+    "name": "Tildagon",
+    "version": "Initial provisioning",
+    "new_install_prompt_erase": true,
+    "builds": [
+      {
+        "improv": false,
+        "chipFamily": "ESP32-S3",
+        "parts": [
+          { "path": "merged-firmware.bin", "offset": 0 },
+          { "path": "sponsors-vfs.bin", "offset": 5177344 }
+        ]
+      }
+    ]
+  }

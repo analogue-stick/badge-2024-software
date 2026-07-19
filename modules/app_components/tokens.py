@@ -1,4 +1,15 @@
-# From https://www.emfcamp.org/about/branding
+from frontboards.utils import detect_frontboard
+
+fb = detect_frontboard()
+
+if (fb & 0xFF00) == 0x2600:
+    from frontboards.twentysix import TwentyTwentySix
+
+    frontboard = TwentyTwentySix()
+else:
+    from frontboards.twentyfour import TwentyTwentyFour
+
+    frontboard = TwentyTwentyFour()
 
 # Display
 display_x = 240
@@ -22,38 +33,67 @@ heading_font_size = eighteen_pt
 line_height = 1.5
 
 # Colors
-colors = {
-    "pale_green": (175, 201, 68),
-    "mid_green": (82, 131, 41),
-    "dark_green": (33, 48, 24),
-    "yellow": (249, 226, 0),
-    "orange": (246, 127, 2),
-    "pink": (245, 80, 137),
-    "blue": (46, 173, 217),
-    "black": (0, 0, 0),
-    "white": (255, 255, 255),
-}
+colors = frontboard.colors
+ui_colors = frontboard.ui_colors
 
-colors = {
-    name: (c[0] / 256.0, c[1] / 256.0, c[2] / 256.0) for (name, c) in colors.items()
-}
-
-ui_colors = {
-    "background": colors["dark_green"],
-    "label": colors["white"],
-    "button_background": colors["pale_green"],
-    "button_text": colors["black"],
-    "active_button_background": colors["yellow"],
-    "active_button_text": colors["black"],
+symbols = {
+    "arrows": {
+        "left": "←",
+        "up": "↑",
+        "right": "→",
+        "down": "↓",
+        "left_right": "↔",
+        "up_down": "↕",
+        "north_west": "↖",
+        "north_east": "↗",
+        "south_east": "↘",
+        "south_west": "↙",
+    },
+    "hexagons": {"outline": "⬡", "filled": "⬢"},
+    "hexpansion": "⬣",
+    "pointing_triangles": {"up": "▲", "right": "▶", "down": "▼", "left": "◀"},
+    "keyboard": {
+        "return": "⏎",
+        "backspace": "␈",
+        "shift": "␏",
+        "square": "□",
+        "triangle": "△",
+        "diamond": "◇",
+        "circle": "○",
+        "club": "♣",
+        "cross": "✕",
+        "solderparty": "⭍",
+    },
+    "emf_logo": "",
+    "shark": "ǩ",
+    "duck": "⇩",
+    "spider": "臩",
+    "bat_open": "멺",
+    "bat_closed": "멻",
 }
 
 
 def clear_background(ctx):
-    ctx.rgb(*colors["dark_green"]).rectangle(-120, -120, display_x, display_y).fill()
+    set_color(ctx, "background")
+    ctx.rectangle(-120, -120, display_x, display_y).fill()
 
 
 def set_color(ctx, color):
-    ctx.rgb(*ui_colors.get(color, colors.get(color, color)))
+    color = ui_colors.get(color, colors.get(color, color))
+    try:
+        color(ctx)
+        return ctx
+    except Exception:
+        pass
+
+    try:
+        ctx.rgb(*color)
+        return ctx
+    except Exception:
+        pass
+
+    ctx.rgb(0.5, 0.5, 0.5)
+    return ctx
 
 
 def button_labels(

@@ -8,25 +8,44 @@ import time
 from tarfile import DIRTYPE, TarFile
 from typing import Any, Callable
 from perf_timer import PerfTimer
-
+from math import radians, pi
 import app
 import async_helpers
 import wifi
 import shutil
 import machine
-from app_components import Menu, fourteen_pt, sixteen_pt, ten_pt
-from events.input import BUTTON_TYPES, ButtonDownEvent
+from app_components import Menu, fourteen_pt, sixteen_pt, ten_pt, seven_pt
+from app_components.tokens import set_color
+from events.input import ButtonDownEvent
+from events.emote import EmoteNegativeEvent, EmotePositiveEvent
+from frontboards.common import FRONTBOARD_BUTTON_TYPES
 from requests import get
 from system.eventbus import eventbus
-from system.launcher.app import (
-    APP_DIR,
-    list_user_apps,
-    load_info,
+from system.launcher.events import (
     InstallNotificationEvent,
+)
+from system.launcher.utils import (
+    APP_DIR,
+    APP_INSTALL_DIR,
+    load_info,
 )
 from system.notification.events import ShowNotificationEvent
 from app_components.background import Background as bg
-from firmware_apps.settings_app import BG_DIR
+from firmware_apps.settings_app import BG_DIR, PAT_DIR
+from random import random, choice, randint
+from app_components.tokens import symbols
+
+
+def get_first_category(manifest):
+    """Extract the first category from an app manifest.
+
+    Categories can be a string or a list of strings. This always returns a
+    single string (the first element if it's a list).
+    """
+    category = manifest.get("category")
+    if isinstance(category, list):
+        return category[0] if category else None
+    return category
 
 
 def dir_exists(filename):
@@ -36,49 +55,51 @@ def dir_exists(filename):
         return False
 
 
-def file_exists(filename):
-    try:
-        return (os.stat(filename)[0] & 0x4000) == 0
-    except OSError:
-        return False
+APP_STORE_LISTING_URL = "https://apps.badge.emfcamp.org/v1/apps"
 
-
-APP_STORE_LISTING_URL = "https://apps.badge.emfcamp.org/demo_api/apps.json"
-
-CODE_INSTALL = "CodeInstall"
-AVAILABLE = "StoreInstall"
+CODE_INSTALL = "Use Code"
+AVAILABLE = "Browse Apps"
 INSTALLED = "Uninstall"
-UPDATE = "Update"
+UPDATE = "Update Apps"
 REFRESH = "Refresh Apps"
 
 
-def list_user_backgrounds():
+def list_apps(dir, callable):
     with PerfTimer("List user apps"):
         apps = []
         try:
-            contents = os.listdir(BG_DIR)
+            contents = os.listdir(dir)
         except OSError:
-            # No apps dir full stop
+            # directory doesn't exist
             try:
-                os.mkdir(BG_DIR)
+                os.mkdir(dir)
             except OSError:
                 pass
             return []
 
         for name in contents:
             app = {
-                "path": f"backgrounds.{name}.app",
-                "callable": "__Background__",
+                "path": f"{dir[1:]}.{name}.app",
+                "callable": callable,
                 "name": name,
                 "folder": name,
                 "hidden": False,
             }
-            metadata = load_info(BG_DIR, name)
+            metadata = load_info(dir, name)
             if "version" not in metadata:
                 app["version"] = "0.0.0"
             app.update(metadata)
             apps.append(app)
         return apps
+
+
+def list_all_apps():
+    app_list = []
+    for d in APP_DIR:
+        app_list.extend(list_apps(d, "__app_export__"))
+    app_list += list_apps(BG_DIR, "__Background__")
+    app_list += list_apps(PAT_DIR, "__Pattern_Export__")
+    return app_list
 
 
 class AppStoreApp(app.App):
@@ -145,7 +166,11 @@ class AppStoreApp(app.App):
         self.app_categories = []
 
         for item in self.app_store_index:
-            app_category = item["manifest"]["app"].get("category")
+            app_name = item.get("manifest", {}).get("app", {}).get("name", "<unknown>")
+            app_category = get_first_category(item["manifest"]["app"])
+            if app_category is None:
+                print(f"[AppStore] WARNING: app '{app_name}' has no category field!")
+                continue
             if app_category not in self.app_categories:
                 self.app_categories.append(app_category)
 
@@ -157,11 +182,13 @@ class AppStoreApp(app.App):
             self.update_state("main_menu")
             eventbus.emit(InstallNotificationEvent())
             eventbus.emit(ShowNotificationEvent("Installed the app!"))
+            eventbus.emit(EmotePositiveEvent())
         except MemoryError:
             self.update_state("install_oom")
         except Exception as e:
             print(e)
             eventbus.emit(ShowNotificationEvent("Couldn't install app"))
+            eventbus.emit(EmoteNegativeEvent())
             self.update_state("main_menu")
 
     def update_state(self, state):
@@ -202,7 +229,7 @@ class AppStoreApp(app.App):
             return [
                 app
                 for app in self.app_store_index
-                if app["manifest"]["app"].get("category") == self.category_filter
+                if get_first_category(app["manifest"]["app"]) == self.category_filter
             ]
 
         def on_select(_, i):
@@ -247,14 +274,15 @@ class AppStoreApp(app.App):
             elif value == REFRESH:
                 self.get_index()
 
+        menu_items = [AVAILABLE, CODE_INSTALL, UPDATE]
+        if len(list_all_apps()) > 0:
+            menu_items.append(
+                INSTALLED
+            )  # Only show uninstall option if there are installed apps (else a zero-length menu crashes)
+
         self.menu = Menu(
             self,
-            menu_items=[
-                CODE_INSTALL,
-                AVAILABLE,
-                UPDATE,
-                INSTALLED,
-            ],
+            menu_items=menu_items,
             select_handler=on_select,
             back_handler=on_cancel,
         )
@@ -274,7 +302,7 @@ class AppStoreApp(app.App):
             # compare format v0.0.0
             return v1.split(".") > v2.split(".")
 
-        installed_apps = list_user_apps() + list_user_backgrounds()
+        installed_apps = list_all_apps()
         self.apps_available_dict = {}
         for a in self.app_store_index:
             folder_name = a["id"]["owner"] + "_" + a["id"]["title"]
@@ -316,7 +344,7 @@ class AppStoreApp(app.App):
             self.cleanup_ui_widgets()
             self.update_state("main_menu")
 
-        installed_apps = list_user_apps() + list_user_backgrounds()
+        installed_apps = list_all_apps()
 
         self.installed_menu = Menu(
             self,
@@ -328,7 +356,7 @@ class AppStoreApp(app.App):
         )
 
     def uninstall_app(self, app):
-        user_apps = list_user_apps() + list_user_backgrounds()
+        user_apps = list_all_apps()
         selected_app = list(filter(lambda x: x["name"] == app, user_apps))
         if len(selected_app) == 0:
             raise RuntimeError(f"app not found: {app}")
@@ -485,21 +513,69 @@ class CodeInstall:
         self.install_handler = install_handler
         self.state = "input"
         self.id: str = ""
+        self.active_button = None
+        self.activation_counter = 0
+
+        self.interlopers = {
+            "characters": ["shark", "spider"],
+            "offsets": {"min": -60, "max": 40},
+            "size": {"min": 30, "max": 50},
+        }
+
+        self.reset_interloper()
+
+        # 1 out of 10 times, we will draw some lads
+        self.include_interloper = random() > 0.9
+
         eventbus.on(ButtonDownEvent, self._handle_buttondown, app)
 
+    def reset_interloper(self):
+        """Reset the interloper."""
+        self.interloper_character = choice(self.interlopers["characters"])
+        self.interloper_size = randint(
+            self.interlopers["size"]["min"],
+            self.interlopers["size"]["max"],
+        )
+
+        interloper_off_screen = randint(
+            self.interlopers["offsets"]["min"], -self.interloper_size
+        )
+        interloper_on_screen = randint(0, self.interlopers["offsets"]["max"])
+
+        self.interloper_offsets = (
+            list(range(interloper_off_screen, interloper_on_screen, 1))
+            + [interloper_on_screen] * 10
+            + list(range(interloper_on_screen, interloper_off_screen, -1))
+        )
+        self.interloper_offset_index = 0
+
+        self.interloper_rotation = random() * 2 * pi
+
     def _handle_buttondown(self, event: ButtonDownEvent):
-        if BUTTON_TYPES["UP"] in event.button:
+        kbd_button = event.button.find_parent_in_group("Keyboard")
+        original_id = self.id
+
+        if FRONTBOARD_BUTTON_TYPES["A"] in event.button:
             self.id += "0"
-        elif BUTTON_TYPES["RIGHT"] in event.button:
+        elif FRONTBOARD_BUTTON_TYPES["B"] in event.button:
             self.id += "1"
-        elif BUTTON_TYPES["CONFIRM"] in event.button:
+        elif FRONTBOARD_BUTTON_TYPES["C"] in event.button:
             self.id += "2"
-        elif BUTTON_TYPES["DOWN"] in event.button:
+        elif FRONTBOARD_BUTTON_TYPES["D"] in event.button:
             self.id += "3"
-        elif BUTTON_TYPES["LEFT"] in event.button:
+        elif FRONTBOARD_BUTTON_TYPES["E"] in event.button:
             self.id += "4"
-        elif BUTTON_TYPES["CANCEL"] in event.button:
+        elif FRONTBOARD_BUTTON_TYPES["F"] in event.button:
             self.id += "5"
+        elif kbd_button is not None and kbd_button.name in "012345":
+            self.id += kbd_button.name
+
+        if original_id == self.id:
+            # We did not handle this button event, so bail now
+            return
+
+        self.active_button = int(self.id[-1])
+        self.activation_counter = 3
 
         if len(self.id) == 8:
             self._cleanup()
@@ -509,14 +585,71 @@ class CodeInstall:
         eventbus.remove(ButtonDownEvent, self._handle_buttondown, self)
 
     def draw(self, ctx):
+        if self.include_interloper:
+            self.draw_interloper(ctx)
+
+        self.draw_numbers(ctx)
+
         ctx.save()
         ctx.text_align = ctx.CENTER
         ctx.text_baseline = ctx.MIDDLE
         ctx.font_size = ten_pt
-        ctx.gray(1).move_to(0, -3 * ten_pt).text("Enter code:")
+        ctx.gray(1).move_to(0, -1.5 * ten_pt).text("Enter code:")
         ctx.font_size = sixteen_pt
         ctx.gray(1).move_to(0, 0).text(self.id)
         ctx.restore()
+
+    def draw_interloper(self, ctx):
+        """Spider, maybe?"""
+        ctx.text_align = ctx.CENTER
+        ctx.text_baseline = ctx.MIDDLE
+        ctx.rotate(self.interloper_rotation)
+        ctx.rgba(1, 1, 1, 0.3)
+        ctx.move_to(-120 + self.interloper_offsets[self.interloper_offset_index], 0)
+        ctx.font_size = self.interloper_size
+        ctx.text(symbols[self.interloper_character])
+        ctx.rotate(-self.interloper_rotation)
+
+        self.interloper_offset_index += 1
+        if self.interloper_offset_index >= len(self.interloper_offsets):
+            self.reset_interloper()
+
+    def draw_numbers(self, ctx):
+        """Draw indicator numbers."""
+        for i in range(6):
+            triangle_type = "regular"
+            text_colour = "button_text"
+            if i == self.active_button:
+                triangle_type = "active"
+                text_colour = "active_button_text"
+                if self.activation_counter > 0:
+                    self.activation_counter -= 1
+
+                else:
+                    self.active_button = None
+
+            self.draw_triangle(ctx, key=triangle_type)
+
+            ctx.text_align = ctx.CENTER
+            ctx.text_baseline = ctx.MIDDLE
+            ctx.font_size = seven_pt
+            set_color(ctx, text_colour)
+            ctx.move_to(0, -100)
+            ctx.text(str(i))
+            ctx.rotate(radians(60))
+
+    def draw_triangle(self, ctx, key="regular"):
+        """Draw a pointer."""
+        triangles = {
+            "regular": {"colour": "button_background", "size": 40},
+            "active": {"colour": "active_button_background", "size": 50},
+        }
+        ctx.text_align = ctx.CENTER
+        ctx.text_baseline = ctx.MIDDLE
+        set_color(ctx, triangles[key]["colour"])
+        ctx.move_to(0, -97)
+        ctx.font_size = triangles[key]["size"]
+        ctx.text(symbols["pointing_triangles"]["up"])
 
 
 def install_app(app):
@@ -546,17 +679,23 @@ def install_app(app):
 
         # TODO: Check we have enough storage in advance
         # TODO: Does the app already exist? Delete it
-        if app["manifest"]["app"].get("category") == "Background":
+        if get_first_category(app["manifest"]["app"]) == "Background":
             TARGET_DIR = "/backgrounds"
+        elif get_first_category(app["manifest"]["app"]) == "Pattern":
+            TARGET_DIR = "/pattern"
         else:
-            TARGET_DIR = APP_DIR
+            TARGET_DIR = APP_INSTALL_DIR
         # Make sure apps dir exists
         try:
             os.mkdir(TARGET_DIR)
         except OSError:
             pass
 
-        app_module_name = "_".join(prefix.split("-")[0:-1])
+        app_module_name = "_".join([app["id"]["owner"], app["id"]["title"]]).replace(
+            "-", "_"
+        )
+
+        has_tildagon_json = False
 
         t = TarFile(fileobj=tar_bytesio)
         for i in t:
@@ -578,11 +717,31 @@ def install_app(app):
                     filename = f"{TARGET_DIR}/{i.name}"
                     filename = filename.replace(prefix, app_module_name, 1)
                     print(f"Filename: {filename}")
+
+                    # Track whether the tarball includes a tildagon.json
+                    if i.name == f"{prefix}/tildagon.json":
+                        has_tildagon_json = True
+
                     f = t.extractfile(i)
                     if f:
                         with open(filename, "wb") as file:
                             while data := f.read():
                                 file.write(data)
+
+        # Remove tildagon.toml if it was in the tarball (not used)
+        toml_path = f"{TARGET_DIR}/{app_module_name}/tildagon.toml"
+        try:
+            os.remove(toml_path)
+            print(f"Removed unused {toml_path}")
+        except OSError:
+            pass
+
+        # Write the app store manifest as tildagon.json if the tarball didn't include one
+        if not has_tildagon_json:
+            tildagon_json_path = f"{TARGET_DIR}/{app_module_name}/tildagon.json"
+            print(f"Writing manifest to {tildagon_json_path}")
+            with open(tildagon_json_path, "w+") as f:
+                json.dump(app["manifest"], f)
 
         internal_manifest = {
             "name": app["manifest"]["app"]["name"],
@@ -600,13 +759,6 @@ def install_app(app):
     except Exception as e:
         print(e)
         raise e
-
-
-def validate_app_files(tar):
-    prefix = find_app_root_dir(tar)
-    app_py_path = find_app_py_file(prefix, tar)
-    print(f"Found app.py at: {app_py_path}")
-    return prefix
 
 
 def find_app_root_dir(tar):

@@ -3,13 +3,20 @@ import display
 import sys
 import time
 
+from events.emote import EmoteNegativeEvent
+from system.a11y.events import ReplaceAccessibiltiyHandlerEvent
 from perf_timer import PerfTimer
+from system.a11y import printer
 from system.eventbus import eventbus
 from system.scheduler.events import (
     RequestForegroundPushEvent,
     RequestForegroundPopEvent,
     RequestStartAppEvent,
     RequestStopAppEvent,
+)
+from system.capabilities.utils import (
+    load_manifest,
+    get_manifest_from_compact_app_format,
 )
 from system.notification.events import ShowNotificationEvent
 
@@ -23,6 +30,9 @@ class _Scheduler:
     def __init__(self):
         # All currently running apps
         self.apps = []
+
+        # Manifests of those apps
+        self.app_manifests = {}
 
         # Background tasks, always running
         self.background_tasks = {}
@@ -55,6 +65,11 @@ class _Scheduler:
             RequestForegroundPopEvent, self._handle_request_foreground_pop, self
         )
 
+        eventbus.on_async(
+            ReplaceAccessibiltiyHandlerEvent, self._handle_new_a11y_handler, self
+        )
+        self.a11y_handler = printer._printa11y
+
         eventbus.on_async(RequestStartAppEvent, self._handle_start_app, self)
         eventbus.on_async(RequestStopAppEvent, self._handle_stop_app, self)
 
@@ -70,6 +85,22 @@ class _Scheduler:
 
     def start_app(self, app, foreground=False, always_on_top=False):
         self.apps.append(app)
+
+        try:
+            # Try to get the module name from the app, which will fail for firmware apps
+            # but should work for all other apps
+            self.app_manifests[app] = load_manifest(
+                *(
+                    [""]
+                    + app.__module__.rsplit(".", 1)[0].replace(".", "/").rsplit("/", 1)
+                )[-2:]
+            )
+        except BaseException:
+            pass
+
+        if not self.app_manifests.get(app):
+            self.app_manifests[app] = get_manifest_from_compact_app_format(app)
+
         self.last_update_times.append(time.ticks_us())
 
         if foreground:
@@ -93,6 +124,11 @@ class _Scheduler:
         except ValueError:
             print(f"App not running: {app}")
             return
+
+        try:
+            del self.app_manifests[app]
+        except KeyError:
+            pass
 
         try:
             self.foreground_stack.remove(app)
@@ -207,6 +243,7 @@ class _Scheduler:
                         message=f"{app.__class__.__name__} has crashed"
                     )
                 )
+                eventbus.emit(EmoteNegativeEvent())
 
         self.update_tasks[app] = asyncio.create_task(app_wrapper())
 
@@ -274,6 +311,9 @@ class _Scheduler:
                             ctx.restore()
                     display.end_frame(ctx)
             await asyncio.sleep(0)
+
+    async def _handle_new_a11y_handler(self, event):
+        self.a11y_handler = event.klass()
 
     async def _main(self):
         update_tasks = []

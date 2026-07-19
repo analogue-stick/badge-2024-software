@@ -48,6 +48,12 @@ class HexpansionHeader:
             checksum ^= byte
         return checksum
 
+    def __eq__(self, other):
+        try:
+            return self.to_bytes() == other.to_bytes()
+        except Exception:
+            return False
+
     def to_bytes(self, include_checksum=True):
         b = struct.pack(
             self._header_format,
@@ -70,8 +76,8 @@ class HexpansionHeader:
             raise RuntimeError("Invalid header length, should be 32")
         if buf[1:4] != b"HEX":
             raise RuntimeError(f"Invalid magic in hexpansion header: {buf[0:4]}")
-        if buf[4:8] != b"2024":
-            raise RuntimeError("Unknown manifest version. Supported: [2024]")
+        if buf[4:8] != b"2024" and buf[4:8] != b"2026":
+            raise RuntimeError("Unknown manifest version. Supported: [2024, 2026]")
         unpacked = struct.unpack(cls._header_format, buf)
 
         if validate_checksum:
@@ -128,11 +134,7 @@ def write_header(port, header, addr=0x50, addr_len=2, page_size=32):
 def read_header(port, addr=0x50, addr_len=2):
     i2c = I2C(port)
 
-    # Set internal address to 0x00
-    addr_bytes = [0] * addr_len
-    i2c.writeto(addr, bytes(addr_bytes))
-
-    header_bytes = i2c.readfrom(addr, 32)
+    header_bytes = i2c.readfrom_mem(addr, 0, 32, addrsize=addr_len * 8)
     header = HexpansionHeader.from_bytes(header_bytes)
 
     return header
