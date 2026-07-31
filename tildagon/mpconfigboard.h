@@ -19,3 +19,5 @@
 
 void tildagon_startup(void);
 #define MICROPY_BOARD_STARTUP tildagon_startup
+
+#define SASPPU_MPY_COMPAT                   (1)
