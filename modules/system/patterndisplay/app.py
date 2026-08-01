@@ -16,6 +16,7 @@ from app_components.utils import path_isfile
 from firmware_apps.settings_app import PAT_DIR
 from system.notification.events import ShowNotificationEvent
 from frontboards.twentysix import TwentyTwentySix
+from tildagon_helpers import pause_async_display, resume_async_display
 
 
 class PatternDisplay(App):
@@ -132,7 +133,9 @@ class PatternDisplay(App):
                                 self.leds[led] = (255, 255, 255)
                             else:
                                 self.leds[led] = next_frame[led]
+                        pause_async_display()
                         self.leds.write()
+                        resume_async_display()
                     if not self._p.fps:
                         break
                     await asyncio.sleep(1 / self._p.fps)

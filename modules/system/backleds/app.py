@@ -48,7 +48,7 @@ class BackLEDManager(App):
             for brightness in [1, 16, 64, 255, 64, 16, 1, 0]:
                 for lednum in range(13, 19):
                     tildagonos.leds[lednum] = (0, brightness, 0)
-                tildagonos.leds.write()
+                tildagonos.write_leds()
                 await asyncio.sleep(0.05)
         finally:
             self.lock.release()
@@ -65,7 +65,7 @@ class BackLEDManager(App):
             for brightness in [1, 16, 64, 255, 64, 16, 1, 0]:
                 for lednum in range(13, 19):
                     tildagonos.leds[lednum] = (brightness, 0, 0)
-                tildagonos.leds.write()
+                tildagonos.write_leds()
                 await asyncio.sleep(0.05)
         finally:
             self.lock.release()
@@ -91,4 +91,4 @@ class BackLEDManager(App):
                     tildagonos.leds[13 + i] = led_colours[i]
             else:
                 tildagonos.leds[13 + i] = (0, 0, 0)
-        tildagonos.leds.write()
+        tildagonos.write_leds()

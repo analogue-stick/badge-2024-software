@@ -65,10 +65,11 @@ class App:
         print(f"Terminating app {self.__class__.__qualname__}")
         eventbus.emit(RequestStopAppEvent(self))
 
+
 class SASPPUApp(App):
     def __init__(self):
         super().__init__()
         self.lock_context = True
 
-    def draw(self):
-        pass
+    def draw(self):  # -> List[BufferEntry]
+        return []

@@ -274,9 +274,11 @@ class _Scheduler:
                     self.foreground_stack[-1], SASPPUApp
                 ):
                     app = self.foreground_stack[-1]
+                    success = False
                     with PerfTimer(f"rendering {app}"):
                         try:
-                            app.draw()
+                            command_buffer = app.draw()
+                            success = True
                         except Exception as e:
                             eventbus.emit(RequestStopAppEvent(app=app))
                             sys.print_exception(e, sys.stderr)
@@ -285,14 +287,17 @@ class _Scheduler:
                                     message=f"{app.__class__.__name__} has crashed"
                                 )
                             )
-                    for i in range(4):
-                        while not display.section_ready(i):
-                            await asyncio.sleep(0)
-                        display.flip_sasppu_section(i)
+                            eventbus.emit(EmoteNegativeEvent())
+                    if success:
+                        for i in range(4):
+                            while not display.section_ready(i):
+                                await asyncio.sleep(0)
+                            display.flip_sasppu_section(i, command_buffer)  # pyright: ignore[reportPossiblyUnboundVariable]
                 else:
                     while not display.all_sections_ready():
                         await asyncio.sleep(0)
                     ctx = display.start_frame()
+                    ctx.a11y = self.a11y_handler
                     for app in self.foreground_stack[-1:] + self.on_top_stack:
                         if isinstance(app, SASPPUApp):
                             continue
@@ -308,8 +313,16 @@ class _Scheduler:
                                         message=f"{app.__class__.__name__} has crashed"
                                     )
                                 )
+                                eventbus.emit(EmoteNegativeEvent())
                             ctx.restore()
                     display.end_frame(ctx)
+                    if ctx.a11y:
+                        try:
+                            await ctx.a11y.finalise_frame()
+                            ctx.a11y.reset()
+                        except Exception as e:
+                            print(e)
+                            pass
             await asyncio.sleep(0)
 
     async def _handle_new_a11y_handler(self, event):

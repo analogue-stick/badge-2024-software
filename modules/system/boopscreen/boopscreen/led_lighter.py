@@ -14,4 +14,4 @@ class LEDLighter:
         for i in range(12):
             tildagonos.leds[i + 1] = [int(i * self.brightness) for i in self.colour]
 
-        tildagonos.leds.write()
+        tildagonos.write_leds()
