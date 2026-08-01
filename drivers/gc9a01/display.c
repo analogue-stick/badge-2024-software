@@ -106,8 +106,8 @@ static inline Ctx *tildagon_gfx_ctx(void) {
 }
 
 static inline void tildagon_start_frame(Ctx *ctx) {
-  int32_t offset_x = FLOW3R_BSP_DISPLAY_WIDTH / 2;
-  int32_t offset_y = FLOW3R_BSP_DISPLAY_HEIGHT / 2;
+  int32_t offset_x = TILDAGON_DISPLAY_WIDTH / 2;
+  int32_t offset_y = TILDAGON_DISPLAY_HEIGHT / 2;
 
   ctx_save(ctx);
   ctx_identity(ctx);
@@ -157,10 +157,10 @@ static mp_obj_t end_frame(mp_obj_t ctx) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(end_frame_obj, end_frame);
 
-static mp_obj_t flip_sasppu_section(mp_obj_t section) {
+static mp_obj_t flip_sasppu_section(mp_obj_t section, mp_obj_t command_buffer) {
   mp_uint_t i = mp_obj_int_get_uint_checked(section);
   // int64_t then = esp_timer_get_time();
-  SASPPU_render((uint16x8_t *)(tildagon_fb), i);
+  SASPPU_render((uint16x8_t *)(tildagon_fb), i, command_buffer);
   // int64_t now = esp_timer_get_time();
   // mp_printf(&mp_plat_print, "render sect %u time: %uus\n", i, now - then);
   fb_sect_state[i] = FB_RENDERED;
@@ -172,7 +172,7 @@ static mp_obj_t flip_sasppu_section(mp_obj_t section) {
   }
   return mp_const_none;
 }
-static MP_DEFINE_CONST_FUN_OBJ_1(flip_sasppu_section_obj, flip_sasppu_section);
+static MP_DEFINE_CONST_FUN_OBJ_2(flip_sasppu_section_obj, flip_sasppu_section);
 
 static mp_obj_t hexagon(size_t n_args, const mp_obj_t *args) {
   // Draw a regular hexagon in a context and return the context
