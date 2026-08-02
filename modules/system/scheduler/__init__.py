@@ -23,6 +23,13 @@ from system.notification.events import ShowNotificationEvent
 from app import SASPPUApp
 
 
+async def send_sasppu_frame(command_buffer):
+    for i in range(4):
+        while not display.section_ready(i):
+            await asyncio.sleep(0)
+        display.flip_sasppu_section(i, command_buffer)
+
+
 class _Scheduler:
     # Always receive all events
     _focused = True
@@ -289,10 +296,7 @@ class _Scheduler:
                             )
                             eventbus.emit(EmoteNegativeEvent())
                     if success:
-                        for i in range(4):
-                            while not display.section_ready(i):
-                                await asyncio.sleep(0)
-                            display.flip_sasppu_section(i, command_buffer)  # pyright: ignore[reportPossiblyUnboundVariable]
+                        await send_sasppu_frame(command_buffer)  # pyright: ignore[reportPossiblyUnboundVariable]
                 else:
                     while not display.all_sections_ready():
                         await asyncio.sleep(0)
